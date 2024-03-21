@@ -40,7 +40,7 @@ if(OMR_HOST_ARCH STREQUAL "ppc")
 	set(OMR_CXX_ENHANCED_WARNINGS_FLAG )
 
 	list(APPEND OMR_PLATFORM_COMPILE_OPTIONS
-		-qalias=noansi
+		#-qalias=noansi   # no openxl equivalent
 		-qxflag=LTOL:LTOL0
 	)
 
@@ -48,13 +48,13 @@ if(OMR_HOST_ARCH STREQUAL "ppc")
 
 	if(OMR_ENV_DATA64)
 		list(APPEND OMR_PLATFORM_COMPILE_OPTIONS
-			-q64
+			-m64
 		)
 	else()
 		# -qarch should be there for 32 and 64 C/CXX flags but the C compiler is used for the assembler and it has trouble with some assembly files if it is specified
 		list(APPEND OMR_PLATFORM_COMPILE_OPTIONS
-			-q32
-			-qarch=ppc
+			#-q32  # no equivalent in openxl
+			-march=ppc
 		)
 	endif()
 
@@ -65,7 +65,7 @@ if(OMR_HOST_ARCH STREQUAL "ppc")
 	# TR_COMPILE_OPTIONS are variables appended to CMAKE_{C,CXX}_FLAGS, and so
 	# apply to both C and C++ compilations.
 	list(APPEND TR_COMPILE_OPTIONS
-		-qarch=pwr7
+		-march=pwr7
 		-qtls
 		-qfuncsect
 		-qsuppress=1540-1087:1540-1088:1540-1090:1540-029:1500-029
@@ -114,10 +114,10 @@ elseif(OMR_OS_LINUX)
 		-qxflag=selinux
 	)
 elseif(OMR_OS_ZOS)
-	set(OMR_ZOS_COMPILE_ARCHITECTURE "10" CACHE STRING "z/OS compile machine architecture")
-	set(OMR_ZOS_COMPILE_TARGET "ZOSV2R3" CACHE STRING "z/OS compile target operating system")
+	set(OMR_ZOS_COMPILE_ARCHITECTURE "arch10" CACHE STRING "z/OS compile machine architecture")
+	set(OMR_ZOS_COMPILE_TARGET "ZOSV2R4" CACHE STRING "z/OS compile target operating system")
 	set(OMR_ZOS_COMPILE_TUNE "12" CACHE STRING "z/OS compile machine architecture tuning")
-	set(OMR_ZOS_LINK_COMPAT "ZOSV2R3" CACHE STRING "z/OS link compatible operating system")
+	set(OMR_ZOS_LINK_COMPAT "ZOSV2R4" CACHE STRING "z/OS link compatible operating system")
 
 	# TODO: This should technically be -qhalt=w however c89 compiler used to compile the C sources does not like this
 	# flag. We'll need to investigate whether we actually need c89 for C sources or if we can use xlc and what to do
@@ -138,37 +138,41 @@ elseif(OMR_OS_ZOS)
 	string(APPEND CMAKE_ASM_FLAGS " \"-Wa,-mgoff\"")
 	string(APPEND CMAKE_ASM_FLAGS " \"-Wa,-mSYSPARM(BIT64)\"")
 
+    # commenting out options progressively as they are not needed with Open XL, can remove in cleanup later.
 	list(APPEND OMR_PLATFORM_COMPILE_OPTIONS
-		"\"-Wc,xplink\""               # link with xplink calling convention
-		"\"-Wc,rostring\""             # place string literals in read only storage
-		"\"-Wc,FLOAT(IEEE,FOLD,AFP)\"" # Use IEEE (instead of IBM Hex Format) style floats
+		#"\"-Wc,xplink\""               # link with xplink calling convention
+		#"\"-Wc,rostring\""             # place string literals in read only storage
+		#"\"-Wc,FLOAT(IEEE,FOLD,AFP)\"" # Use IEEE (instead of IBM Hex Format) style floats
 		"\"-Wc,enum(4)\""              # Specifies how many bytes of storage enums occupy
 		#"\"-Wa,goff\""                 # Assemble into GOFF object files
-		"\"-Wc,NOANSIALIAS\""          # Do not generate ALIAS binder control statements
-		"\"-Wc,TARGET(${OMR_ZOS_COMPILE_TARGET})\""     # Generate code for the target operating system
+		#"\"-Wc,NOANSIALIAS\""          # Do not generate ALIAS binder control statements
+		"-fstrict-aliasing"
+		#"\"-Wc,TARGET(${OMR_ZOS_COMPILE_TARGET})\""     # Generate code for the target operating system
+		"-mzos-target=${OMR_ZOS_COMPILE_TARGET}"
 	)
 
 	list(APPEND OMR_PLATFORM_C_COMPILE_OPTIONS
-		"\"-Wc,ARCH(${OMR_ZOS_COMPILE_ARCHITECTURE})\""
-		"\"-Wc,TUNE(${OMR_ZOS_COMPILE_TUNE})\""
-		"\"-Wl,compat=${OMR_ZOS_LINK_COMPAT}\""
-		"\"-Wc,langlvl(extc99)\""
+		#"\"-Wc,ARCH(${OMR_ZOS_COMPILE_ARCHITECTURE})\""
+		"-march=${OMR_ZOS_COMPILE_ARCHITECTURE}"
+		#"\"-Wc,TUNE(${OMR_ZOS_COMPILE_TUNE})\""  # not needed openxl
+		#"\"-Wl,compat=${OMR_ZOS_LINK_COMPAT}\""
+		#"\"-Wc,langlvl(extc99)\""
 	)
 
 	list(APPEND OMR_PLATFORM_CXX_COMPILE_OPTIONS
 		#-+                             # Compiles any file as a C++ language file
 		"\"-Wc,ARCH(${OMR_ZOS_COMPILE_ARCHITECTURE})\""
-		"\"-Wc,TUNE(${OMR_ZOS_COMPILE_TUNE})\""
+		#"\"-Wc,TUNE(${OMR_ZOS_COMPILE_TUNE})\""  # not needed openxl
 		#"\"-Wl,compat=${OMR_ZOS_LINK_COMPAT}\""
-		"\"-Wc,langlvl(extended)\""
+		#"\"-Wc,langlvl(extended)\""
+		"-std=c++14" 
 		#-qlanglvl=extended0x
 		-fasm
 		#-fno-integrated-as             # Ensure the clang integrated assembler is not used
 	)
 
 	list(APPEND OMR_PLATFORM_SHARED_COMPILE_OPTIONS
-		-Wc,DLL
-		-Wc,EXPORTALL
+		-fvisibility=default
 	)
 
 	list(APPEND OMR_PLATFORM_SHARED_LINKER_OPTIONS
@@ -232,10 +236,11 @@ if(OMR_OS_ZOS)
 	function(_omr_toolchain_process_exports TARGET_NAME)
 		# Any type of target which says it has exports should get the DLL, and EXPORTALL
 		# compile flags
-		target_compile_options(${TARGET_NAME}
-			PRIVATE
-				-Wc,DLL,EXPORTALL
-		)
+		# Not needed for openxl
+		#target_compile_options(${TARGET_NAME}
+		#	PRIVATE
+		#		-Wc,DLL,EXPORTALL
+		#)
 
 		# only shared libraries will generate an export side deck
 		get_target_property(target_type ${TARGET_NAME} TYPE)

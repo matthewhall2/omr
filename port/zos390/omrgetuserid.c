@@ -34,6 +34,7 @@
 
 #define J9_MAX_USERID 16
 
+
 /**
  * Get the userid for a z/OS job.
  *
@@ -54,6 +55,7 @@ omrget_userid(char *userid, uintptr_t length)
 	uintptr_t result = 0;
 
 	userid[0] = '\0';
+	extern void _USERID(char *); /* defined in omruserid.s */
 
 	if (NULL != tmp_userid) {
 		char *ascname = NULL;

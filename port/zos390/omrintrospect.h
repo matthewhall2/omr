@@ -60,8 +60,11 @@
 
 typedef __mcontext_t_ thread_context;
 
-
+if defined(__clang__)
+#pragma pack(push, 1)
+#else
 #pragma pack(packed)
+#endif
 
 /* Program routine entry area (XPLINK) */
 typedef struct XPLINK_Routine_entry {
@@ -633,6 +636,10 @@ struct tcb {
 #define QUIESCE_SRB          9  /*  Quiesce threads type = SRBs      @DGA */
 /* Skip 10 and 11 due to collision with BPXZCONS Freeze/Unfreeze Fast */
 
+#if defined(__clang__)
+#pragma pack(pop)
+#else
 #pragma pack(reset)
+#endif
 
 #endif

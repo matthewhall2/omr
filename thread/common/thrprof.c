@@ -470,7 +470,11 @@ omrthread_get_handle(omrthread_t thread)
 		In order to work around the compiler error, we have to reach inside
 		the structure do the dirty work. The handle may not even be correct! */
 	uintptr_t *tempHandle;
-	tempHandle = (uintptr_t *)&(thread->handle.__[0]);
+	#if defined(__GNUC__)
+		tempHandle = (uintptr_t *)&(thread->handle.__);
+	#else
+		tempHandle = (uintptr_t *)&(thread->handle.__[0]);
+	#endif
 	return *tempHandle;
 #else
 	return (uintptr_t)thread->handle;

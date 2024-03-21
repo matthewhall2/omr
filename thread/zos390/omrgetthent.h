@@ -51,7 +51,11 @@
 	#pragma linkage(BPX1GTH,OS)
 #endif /* _LP64 */
 
+#if defined(__clang__)
+#pragma pack(push, 1)
+#else
 #pragma pack(packed)
+#endif
 
 /*
 PGTHA                 DSECT ,        I N P U T - - - - - - - - - - -
@@ -553,6 +557,10 @@ struct j9pg_thread_data {
 	char padding[256];
 };
 
+#if defined(__clang__)
+#pragma pack(pop)
+#else
 #pragma pack(reset)
+#endif
 
 #endif /* OMRGETTHENT_H */

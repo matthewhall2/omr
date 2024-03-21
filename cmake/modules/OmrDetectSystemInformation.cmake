@@ -202,12 +202,19 @@ macro(omr_detect_system_information)
 			# In CMake 3.14 and prior, XLClang uses CMAKE_C_COMPILER_ID "XL"
 			# In CMake 3.15 and beyond, XLClang uses CMAKE_C_COMPILER_ID "XLClang"
 			set(_OMR_TOOLCONFIG "xlc")
+			message(STATUS "CMAKE_C_COMPILER is ${CMAKE_C_COMPILER}")
 			if(CMAKE_C_COMPILER MATCHES ".*xlclang$")
 				# Checking the CMAKE_C_COMPILER command is necessary to determine if XLClang is
 				# the compiler, since XLClang might have CMAKE_C_COMPILER_ID "XL" or "XLClang"
 				# depending on the CMake version. Without this check, it's ambiguous whether the
 				# compiler is XLC or XLClang.
 				set(CMAKE_C_COMPILER_IS_XLCLANG TRUE CACHE BOOL "XLClang is the C compiler")
+			#elseif(CMAKE_C_COMPILER MATCHES ".*ibm-clang(/d/d)?$")
+			elseif(CMAKE_C_COMPILER MATCHES ".*ibm-clang.*")
+			    message(STATUS "ibm-clang found!")
+				set(_OMR_TOOLCONFIG "clang")
+			else()
+			    message(STATUS "NO MATCH")
 			endif()
 		else()
 			message(FATAL_ERROR "OMR: Unknown compiler ID: '${CMAKE_CXX_COMPILER_ID}'")

@@ -75,7 +75,9 @@ omrthread_get_ras_tid(void)
     uint64_t tid64;
     pthread_threadid_np(NULL, &tid64);
     threadID = (pid_t)tid64;
-#else /* defined(OSX) */
+#elif defined(J9ZOS390) && !defined(__GNUC__)
+    threadID = (uintptr_t)(*(uint32_t *)pthread_self().__);
+#else /* J9ZOS390 && __GNUC__ */
 	pthread_t myThread = pthread_self();
 
 	/*

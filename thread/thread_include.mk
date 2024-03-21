@@ -29,13 +29,15 @@
 # to build object files in a different directory.
 THREAD_SRCDIR ?= ./
 
+# Changing the order of the objects seems to fix a protection exception
+# https://github.ibm.com/compiler/wyvern/issues/12410
 OBJECTS :=\
   j9sem \
   omrthread \
-  omrthreadattr \
   omrthreaddebug \
   omrthreaderror \
   omrthreadinspect \
+  omrthreadattr \
   omrthreadmem \
   omrthreadnuma \
   omrthreadpriority \

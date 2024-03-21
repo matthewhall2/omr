@@ -72,6 +72,8 @@ intptr_t sem_destroy_zos(j9sem_t s);
 intptr_t sem_wait_zos(j9sem_t s);
 intptr_t sem_trywait_zos(j9sem_t s);
 intptr_t sem_post_zos(j9sem_t s);
+int setenv (const char *, const char *, int) __THROW;
+char *   getenv (const char *) __THROW;
 
 #if defined (OMRZTPF)
 void  ztpf_init_proc(void);

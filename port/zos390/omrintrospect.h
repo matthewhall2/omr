@@ -60,7 +60,7 @@
 
 typedef __mcontext_t_ thread_context;
 
-if defined(__clang__)
+#if defined(__clang__)
 #pragma pack(push, 1)
 #else
 #pragma pack(packed)

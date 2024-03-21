@@ -1,4 +1,5 @@
 ###############################################################################
+
 # Copyright (c) 2017, 2022 IBM Corp. and others
 #
 # This program and the accompanying materials are made available under
@@ -128,12 +129,21 @@ elseif(OMR_OS_ZOS)
 	set(OMR_C_ENHANCED_WARNINGS_FLAG )
 	set(OMR_CXX_ENHANCED_WARNINGS_FLAG )
 
+	#list(APPEND CMAKE_ASM_FLAGS
+	#	"-fno-integrated-as"
+	#	"\"-Wa,-mgoff\""
+	#)
+	
+	set(CMAKE_ASM_FLAGS "-fno-integrated-as")
+	string(APPEND CMAKE_ASM_FLAGS " \"-Wa,-mgoff\"")
+	string(APPEND CMAKE_ASM_FLAGS " \"-Wa,-mSYSPARM(BIT64)\"")
+
 	list(APPEND OMR_PLATFORM_COMPILE_OPTIONS
 		"\"-Wc,xplink\""               # link with xplink calling convention
 		"\"-Wc,rostring\""             # place string literals in read only storage
 		"\"-Wc,FLOAT(IEEE,FOLD,AFP)\"" # Use IEEE (instead of IBM Hex Format) style floats
 		"\"-Wc,enum(4)\""              # Specifies how many bytes of storage enums occupy
-		"\"-Wa,goff\""                 # Assemble into GOFF object files
+		#"\"-Wa,goff\""                 # Assemble into GOFF object files
 		"\"-Wc,NOANSIALIAS\""          # Do not generate ALIAS binder control statements
 		"\"-Wc,TARGET(${OMR_ZOS_COMPILE_TARGET})\""     # Generate code for the target operating system
 	)
@@ -149,10 +159,11 @@ elseif(OMR_OS_ZOS)
 		#-+                             # Compiles any file as a C++ language file
 		"\"-Wc,ARCH(${OMR_ZOS_COMPILE_ARCHITECTURE})\""
 		"\"-Wc,TUNE(${OMR_ZOS_COMPILE_TUNE})\""
-		"\"-Wl,compat=${OMR_ZOS_LINK_COMPAT}\""
+		#"\"-Wl,compat=${OMR_ZOS_LINK_COMPAT}\""
 		"\"-Wc,langlvl(extended)\""
-		-qlanglvl=extended0x
-		-qasm
+		#-qlanglvl=extended0x
+		-fasm
+		#-fno-integrated-as             # Ensure the clang integrated assembler is not used
 	)
 
 	list(APPEND OMR_PLATFORM_SHARED_COMPILE_OPTIONS
@@ -171,8 +182,8 @@ elseif(OMR_OS_ZOS)
 		)
 
 		list(APPEND OMR_PLATFORM_COMPILE_OPTIONS
-			-Wc,lp64
-			"\"-Wa,SYSPARM(BIT64)\""
+			#-Wc,lp64  # wont be needed with ibm-clang64
+			#"\"-Wa,SYSPARM(BIT64)\""
 		)
 
 		list(APPEND OMR_PLATFORM_SHARED_LINKER_OPTIONS

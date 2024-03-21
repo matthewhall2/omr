@@ -1,6 +1,6 @@
 ###############################################################################
 
-# Copyright (c) 2017, 2022 IBM Corp. and others
+# Copyright (c) 2017, 2024 IBM Corp. and others
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License 2.0 which accompanies this
@@ -119,21 +119,6 @@ elseif(OMR_OS_ZOS)
 	set(OMR_ZOS_COMPILE_TUNE "12" CACHE STRING "z/OS compile machine architecture tuning")
 	set(OMR_ZOS_LINK_COMPAT "ZOSV2R4" CACHE STRING "z/OS link compatible operating system")
 
-	# TODO: This should technically be -qhalt=w however c89 compiler used to compile the C sources does not like this
-	# flag. We'll need to investigate whether we actually need c89 for C sources or if we can use xlc and what to do
-	# with this flag. For now I'm leaving it as empty.
-	set(OMR_C_WARNINGS_AS_ERROR_FLAG )
-	set(OMR_CXX_WARNINGS_AS_ERROR_FLAG )
-
-	# There is no enhanced warning for XLC right now
-	set(OMR_C_ENHANCED_WARNINGS_FLAG )
-	set(OMR_CXX_ENHANCED_WARNINGS_FLAG )
-
-	#list(APPEND CMAKE_ASM_FLAGS
-	#	"-fno-integrated-as"
-	#	"\"-Wa,-mgoff\""
-	#)
-	
 	set(CMAKE_ASM_FLAGS "-fno-integrated-as")
 	string(APPEND CMAKE_ASM_FLAGS " \"-Wa,-mgoff\"")
 	string(APPEND CMAKE_ASM_FLAGS " \"-Wa,-mSYSPARM(BIT64)\"")
@@ -156,7 +141,7 @@ elseif(OMR_OS_ZOS)
 		"-march=${OMR_ZOS_COMPILE_ARCHITECTURE}"
 		#"\"-Wc,TUNE(${OMR_ZOS_COMPILE_TUNE})\""  # not needed openxl
 		#"\"-Wl,compat=${OMR_ZOS_LINK_COMPAT}\""
-		#"\"-Wc,langlvl(extc99)\""
+		#"\"-Wc,langlvl(extc99)\"" # best suggested to remove -std option altogether
 	)
 
 	list(APPEND OMR_PLATFORM_CXX_COMPILE_OPTIONS

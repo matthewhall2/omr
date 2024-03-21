@@ -26,7 +26,7 @@ include $(top_srcdir)/omrmakefiles/configure.mk
 
 OMR_TOOLCHAIN ?= gcc
 
-ifneq (,$(filter gcc xlc clang,$(OMR_TOOLCHAIN)))
+ifneq (,$(filter gcc xlc openxl,$(OMR_TOOLCHAIN)))
   DEBUG_FORMAT = dwo
 else ifeq (msvc,$(OMR_TOOLCHAIN))
   DEBUG_FORMAT = pdb

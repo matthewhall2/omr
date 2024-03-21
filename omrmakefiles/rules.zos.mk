@@ -34,7 +34,7 @@ endif
 ifeq (xlc,$(OMR_TOOLCHAIN))
   GLOBAL_CFLAGS+=-Wc,"ARCH($(OMR_ZOS_COMPILE_ARCHITECTURE))"
   GLOBAL_CXXFLAGS+=-Wc,"ARCH($(OMR_ZOS_COMPILE_ARCHITECTURE))"
-else ifeq (clang,$(OMR_TOOLCHAIN))
+else ifeq (openxl,$(OMR_TOOLCHAIN))
   GLOBAL_CFLAGS+=-march=arch$(OMR_ZOS_COMPILE_ARCHITECTURE)
   GLOBAL_CXXFLAGS+=-march=arch$(OMR_ZOS_COMPILE_ARCHITECTURE)
 endif
@@ -80,7 +80,7 @@ ifeq ($(OMR_OPTIMIZE),1)
     # COMPAT=ZOSV1R13 is the minimum level that supports conditional sequential RLDs.
     # http://www-01.ibm.com/support/knowledgecenter/SSLTBW_2.1.0/com.ibm.zos.v2r1.ieab100/compat.htm
       COPTFLAGS+=-Wl,compat=$(OMR_ZOS_LINK_COMPAT)
-    else ifeq (clang,$(OMR_TOOLCHAIN))
+    else ifeq (openxl,$(OMR_TOOLCHAIN))
       COPTFLAGS=-O3
     endif
 else
@@ -103,12 +103,12 @@ GLOBAL_CPPFLAGS+=-DJ9ZOS390 -DLONGLONG -D_ALL_SOURCE -D_XOPEN_SOURCE_EXTENDED -D
 # TARGET   Generate code for the target operating system
 ifeq (xlc,$(OMR_TOOLCHAIN))
   GLOBAL_FLAGS+=-Wc,"xplink,rostring,FLOAT(IEEE,FOLD,AFP),enum(4)" -Wa,goff -Wc,NOANSIALIAS -Wc,"TARGET($(OMR_ZOS_COMPILE_TARGET))"
-else ifeq (clang,$(OMR_TOOLCHAIN))
+else ifeq (openxl,$(OMR_TOOLCHAIN))
   GLOBAL_FLAGS+=-fno-short-enums -fno-strict-aliasing
 endif
 
-ifeq (clang,$(OMR_TOOLCHAIN))
-  # Specify the path to the development headers from clang. INCLUDE_DIR is an environment variable
+ifeq (openxl,$(OMR_TOOLCHAIN))
+  # Specify the path to the development headers from openxl. INCLUDE_DIR is an environment variable
     GLOBAL_FLAGS+=-DCOMPILER_HEADER_PATH_PREFIX=$(INCLUDE_DIR)
 endif
 
@@ -118,7 +118,7 @@ else
   GLOBAL_CPPFLAGS+=-DIBM_ATOE
   ifeq (xlc,$(OMR_TOOLCHAIN))
     GLOBAL_FLAGS+=-Wc,"convlit(ISO8859-1)"
-  else ifeq (clang,$(OMR_TOOLCHAIN))
+  else ifeq (openxl,$(OMR_TOOLCHAIN))
     GLOBAL_FLAGS+=-fexec-charset=ISO8859-1
   endif
 endif
@@ -127,7 +127,7 @@ ifeq (1,$(OMR_ENV_DATA64))
   GLOBAL_CPPFLAGS+=-DJ9ZOS39064
   ifeq (xlc,$(OMR_TOOLCHAIN))
     GLOBAL_FLAGS+=-Wc,lp64 -Wa,"SYSPARM(BIT64)"
-  else ifeq (clang,$(OMR_TOOLCHAIN))
+  else ifeq (openxl,$(OMR_TOOLCHAIN))
     GLOBAL_FLAGS+=-m64
   endif
 else
@@ -137,7 +137,7 @@ endif
 ifeq (xlc,$(OMR_TOOLCHAIN))
   GLOBAL_CFLAGS+=-Wc,"langlvl(extc99)" $(GLOBAL_FLAGS)
   GLOBAL_CXXFLAGS+=-Wc,"langlvl(extended0x)" -+ $(GLOBAL_FLAGS)
-else ifeq (clang,$(OMR_TOOLCHAIN))
+else ifeq (openxl,$(OMR_TOOLCHAIN))
   GLOBAL_CFLAGS+=-std=gnu99 $(GLOBAL_FLAGS)
   GLOBAL_CXXFLAGS+=-std=gnu++11 -xc++ $(GLOBAL_FLAGS)
 endif
@@ -151,7 +151,7 @@ ifeq (1,$(DO_LINK))
   ifneq (,$(findstring shared,$(ARTIFACT_TYPE)))
     ifeq (xlc,$(OMR_TOOLCHAIN))
       GLOBAL_CPPFLAGS+=-Wc,DLL,EXPORTALL
-    else ifeq (clang,$(OMR_TOOLCHAIN))
+    else ifeq (openxl,$(OMR_TOOLCHAIN))
       GLOBAL_CPPFLAGS+=-fvisibility=default
     endif
   endif
@@ -160,7 +160,7 @@ ifeq (1,$(DO_LINK))
   # It is not applied to the C linking command.
   ifeq (xlc,$(OMR_TOOLCHAIN))
     OMR_MK_CXXLINKFLAGS=-Wc,"langlvl(extended0x)" -+
-  else ifeq (clang,$(OMR_TOOLCHAIN))
+  else ifeq (openxl,$(OMR_TOOLCHAIN))
     OMR_MK_CXXLINKFLAGS=-std=gnu++11
   endif
 
@@ -178,7 +178,7 @@ ifeq (1,$(DO_LINK))
     ifeq (xlc,$(OMR_TOOLCHAIN))
       OMR_MK_CXXLINKFLAGS+=-Wc,lp64
       GLOBAL_LDFLAGS+=-Wl,lp64
-    else ifeq (clang,$(OMR_TOOLCHAIN))
+    else ifeq (openxl,$(OMR_TOOLCHAIN))
       OMR_MK_CXXLINKFLAGS+=-m64
       GLOBAL_LDFLAGS+=-m64
     endif
@@ -204,7 +204,7 @@ endif
 	rm -f $*.s
 
 # compilation for .s files
-ifeq (clang,$(OMR_TOOLCHAIN))
+ifeq (openxl,$(OMR_TOOLCHAIN))
 # Workaround due to clang idiosyncracies
   define AS_COMMAND
   -$(AS) -mgoff -m"SYSPARM(BIT64)" -m64 $<
@@ -251,7 +251,7 @@ endef
 # The following files cannot be built with clang due to either
 # - pragma convlit
 # - pragma linkage
-ifeq (clang,$(OMR_TOOLCHAIN))
+ifeq (openxl,$(OMR_TOOLCHAIN))
   ifneq (,$(findstring shared, $(ARTIFACT_TYPE)))
     XLC_VISIBILITY = -Wc,DLL,EXPORTALL
   endif

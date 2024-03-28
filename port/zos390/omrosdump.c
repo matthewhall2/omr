@@ -26,6 +26,7 @@
  * @brief Dump formatting
  */
 
+#define _EXT
 
 #include <errno.h>
 #include <stdio.h>
@@ -37,11 +38,14 @@
 #include <time.h>
 #include <pwd.h>
 #include <ctest.h>
+#include "omrgetjobname.h"
 #include "omrport.h"
+#include "omrportpriv.h"
 #if defined(J9ZOS390) && !defined(OMR_EBCDIC)
 #include "atoe.h"
 #endif
 #include "portnls.h"
+
 
 static void convertToUpper(struct OMRPortLibrary *portLibrary, char *toConvert, uintptr_t len);
 static void appendCoreName(struct OMRPortLibrary *portLibrary, char *corepath, intptr_t pathBufferLimit, intptr_t pid);
@@ -332,6 +336,8 @@ tdump(struct OMRPortLibrary *portLibrary, char *asciiLabel, char *ebcdicLabel, u
 		unsigned char len;
 		char dsn[256];
 	} *dsnPattern31;
+
+	extern void _TDUMP(struct ioparms_t *ioparms, struct dsn_pattern_t *dsn_pattern); /* defined in omrgenerate_ieat_dump.s */
 
 	/* _TDUMP subroutine expects 31 bit addresses */
 	ioParms31 = __malloc31(sizeof(*ioParms31));

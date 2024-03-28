@@ -34,22 +34,26 @@
 #include "omrintrospect_common.h"
 #include "omrutil.h"
 
-#pragma linkage(getthent, OS_UPSTACK)
 #if defined(OMR_ENV_DATA64)
+#pragma linkage(getthent, OS)
 #pragma map(getthent, "BPX4GTH")
 #else
+#pragma linkage(getthent, OS_UPSTACK)
 #pragma map(getthent, "BPX1GTH")
 #endif
 
-#pragma linkage(pthread_quiesce, OS_UPSTACK)
 #if defined(OMR_ENV_DATA64)
 #pragma map(pthread_quiesce, "BPX4PTQ")
 #else
+#pragma linkage(pthread_quiesce, OS_UPSTACK)
 #pragma map(pthread_quiesce, "BPX1PTQ")
 #endif
 
+#if defined(OMR_ENV_DATA64)
+#else
 #pragma linkage(pthread_quiesce_and_get_np_X, OS_UPSTACK)
 #pragma map(pthread_quiesce_and_get_np_X, "BPX1PQG")
+#endif
 
 #ifdef MAX_NAME
 #undef MAX_NAME

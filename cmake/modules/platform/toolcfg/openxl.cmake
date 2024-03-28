@@ -128,17 +128,18 @@ elseif(OMR_OS_ZOS)
 		#"\"-Wc,xplink\""               # link with xplink calling convention
 		#"\"-Wc,rostring\""             # place string literals in read only storage
 		#"\"-Wc,FLOAT(IEEE,FOLD,AFP)\"" # Use IEEE (instead of IBM Hex Format) style floats
-		"\"-Wc,enum(4)\""              # Specifies how many bytes of storage enums occupy
+		#"\"-Wc,enum(4)\""              # Specifies how many bytes of storage enums occupy
 		#"\"-Wa,goff\""                 # Assemble into GOFF object files
 		#"\"-Wc,NOANSIALIAS\""          # Do not generate ALIAS binder control statements
 		"-fstrict-aliasing"
 		#"\"-Wc,TARGET(${OMR_ZOS_COMPILE_TARGET})\""     # Generate code for the target operating system
 		"-mzos-target=${OMR_ZOS_COMPILE_TARGET}"
+		"-m64"
 	)
 
 	list(APPEND OMR_PLATFORM_C_COMPILE_OPTIONS
 		#"\"-Wc,ARCH(${OMR_ZOS_COMPILE_ARCHITECTURE})\""
-		"-march=${OMR_ZOS_COMPILE_ARCHITECTURE}"
+		-march=${OMR_ZOS_COMPILE_ARCHITECTURE}
 		#"\"-Wc,TUNE(${OMR_ZOS_COMPILE_TUNE})\""  # not needed openxl
 		#"\"-Wl,compat=${OMR_ZOS_LINK_COMPAT}\""
 		#"\"-Wc,langlvl(extc99)\"" # best suggested to remove -std option altogether
@@ -146,7 +147,7 @@ elseif(OMR_OS_ZOS)
 
 	list(APPEND OMR_PLATFORM_CXX_COMPILE_OPTIONS
 		#-+                             # Compiles any file as a C++ language file
-		"\"-Wc,ARCH(${OMR_ZOS_COMPILE_ARCHITECTURE})\""
+		-march=${OMR_ZOS_COMPILE_ARCHITECTURE}
 		#"\"-Wc,TUNE(${OMR_ZOS_COMPILE_TUNE})\""  # not needed openxl
 		#"\"-Wl,compat=${OMR_ZOS_LINK_COMPAT}\""
 		#"\"-Wc,langlvl(extended)\""
@@ -160,23 +161,9 @@ elseif(OMR_OS_ZOS)
 		-fvisibility=default
 	)
 
-	list(APPEND OMR_PLATFORM_SHARED_LINKER_OPTIONS
-		-Wl,xplink
-		-Wl,dll
-	)
-
 	if(OMR_ENV_DATA64)
 		list(APPEND OMR_PLATFORM_DEFINITIONS
 			-DJ9ZOS39064
-		)
-
-		list(APPEND OMR_PLATFORM_COMPILE_OPTIONS
-			#-Wc,lp64  # wont be needed with ibm-clang64
-			#"\"-Wa,SYSPARM(BIT64)\""
-		)
-
-		list(APPEND OMR_PLATFORM_SHARED_LINKER_OPTIONS
-			-Wl,lp64
 		)
 	else()
 		list(APPEND OMR_PLATFORM_DEFINITIONS

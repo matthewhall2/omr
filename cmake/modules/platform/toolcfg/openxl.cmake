@@ -118,6 +118,9 @@ elseif(OMR_OS_ZOS)
 	set(OMR_ZOS_COMPILE_TARGET "ZOSV2R4" CACHE STRING "z/OS compile target operating system")
 	set(OMR_ZOS_COMPILE_TUNE "12" CACHE STRING "z/OS compile machine architecture tuning")
 	set(OMR_ZOS_LINK_COMPAT "ZOSV2R4" CACHE STRING "z/OS link compatible operating system")
+	set(CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS "--shared")
+	set(CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS "--shared")
+
 
 	set(CMAKE_ASM_FLAGS "-fno-integrated-as")
 	string(APPEND CMAKE_ASM_FLAGS " \"-Wa,-mgoff\"")
@@ -224,6 +227,7 @@ if(OMR_OS_ZOS)
 				"-DLIBRARY_FILE_NAME=$<TARGET_FILE_NAME:${TARGET_NAME}>"
 				"-DRUNTIME_DIR=$<TARGET_FILE_DIR:${TARGET_NAME}>"
 				"-DARCHIVE_DIR=$<TARGET_PROPERTY:${TARGET_NAME},ARCHIVE_OUTPUT_DIRECTORY>"
+				"-DOMR_TOOLCONFIG=${_OMR_TOOLCONFIG}"
 				-P "${omr_SOURCE_DIR}/cmake/modules/platform/toolcfg/zos_rename_exports.cmake"
 		)
 	endfunction()

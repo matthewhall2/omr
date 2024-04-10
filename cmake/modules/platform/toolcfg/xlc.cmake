@@ -236,6 +236,7 @@ if(OMR_OS_ZOS)
 				"-DLIBRARY_FILE_NAME=$<TARGET_FILE_NAME:${TARGET_NAME}>"
 				"-DRUNTIME_DIR=$<TARGET_FILE_DIR:${TARGET_NAME}>"
 				"-DARCHIVE_DIR=$<TARGET_PROPERTY:${TARGET_NAME},ARCHIVE_OUTPUT_DIRECTORY>"
+				"-DOMR_TOOLCONFIG=${_OMR_TOOLCONFIG}"
 				-P "${omr_SOURCE_DIR}/cmake/modules/platform/toolcfg/zos_rename_exports.cmake"
 		)
 	endfunction()

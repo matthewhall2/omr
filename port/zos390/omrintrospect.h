@@ -37,17 +37,17 @@
 #if defined(OMR_ENV_DATA64)
 #pragma linkage(getthent, OS)
 #pragma map(getthent, "BPX4GTH")
-#else
+#else /* defined(OMR_ENV_DATA64) */
 #pragma linkage(getthent, OS_UPSTACK)
 #pragma map(getthent, "BPX1GTH")
-#endif
+#endif /* defined(OMR_ENV_DATA64) */
 
 #if defined(OMR_ENV_DATA64)
 #pragma map(pthread_quiesce, "BPX4PTQ")
-#else
+#else /* defined(OMR_ENV_DATA64) */
 #pragma linkage(pthread_quiesce, OS_UPSTACK)
 #pragma map(pthread_quiesce, "BPX1PTQ")
-#endif
+#endif /* defined(OMR_ENV_DATA64) */
 
 #if defined(OMR_ENV_DATA64)
 #else

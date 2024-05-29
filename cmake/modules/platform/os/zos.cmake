@@ -46,7 +46,7 @@ target_compile_definitions(omr_ascii INTERFACE -DIBM_ATOE)
 if(CMAKE_C_COMPILER_IS_OPENXL)
 	target_compile_options(omr_ascii INTERFACE -fexec-charset=ISO8859-1 -isystem ${CMAKE_CURRENT_LIST_DIR}/../../../../util/a2e/headers)
 else()
-	target_compile_options(omr_ascii INTERFACE "-Wc,convlit(ISO8859-1) -I${CMAKE_CURRENT_LIST_DIR}/../../../../util/a2e/headers")
+	target_compile_options(omr_ascii INTERFACE "-Wc,convlit(ISO8859-1),nose,se(${CMAKE_CURRENT_LIST_DIR}/../../../../util/a2e/headers)")
 endif()
 target_link_libraries(omr_ascii INTERFACE j9a2e)
 

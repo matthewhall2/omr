@@ -114,10 +114,10 @@ elseif(OMR_OS_LINUX)
 		-qxflag=selinux
 	)
 elseif(OMR_OS_ZOS)
-	set(OMR_ZOS_COMPILE_ARCHITECTURE "arch10" CACHE STRING "z/OS compile machine architecture")
-	set(OMR_ZOS_COMPILE_TARGET "ZOSV2R4" CACHE STRING "z/OS compile target operating system")
-	set(OMR_ZOS_COMPILE_TUNE "12" CACHE STRING "z/OS compile machine architecture tuning")
-	set(OMR_ZOS_LINK_COMPAT "ZOSV2R4" CACHE STRING "z/OS link compatible operating system")
+	set(OMR_ZOS_COMPILE_ARCHITECTURE "arch10" CACHE STRING "z/OS compile machine architecture" FORCE)
+	set(OMR_ZOS_COMPILE_TARGET "ZOSV2R4" CACHE STRING "z/OS compile target operating system" FORCE)
+	set(OMR_ZOS_COMPILE_TUNE "12" CACHE STRING "z/OS compile machine architecture tuning" FORCE)
+	set(OMR_ZOS_LINK_COMPAT "ZOSV2R4" CACHE STRING "z/OS link compatible operating system" FORCE)
 	set(CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS "--shared")
 	set(CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS "--shared")
 
@@ -211,11 +211,11 @@ if(OMR_OS_ZOS)
 	function(_omr_toolchain_process_exports TARGET_NAME)
 		# Any type of target which says it has exports should get the DLL, and EXPORTALL
 		# compile flags
-		# Not needed for openxl
-		#target_compile_options(${TARGET_NAME}
-		#	PRIVATE
-		#		-Wc,DLL,EXPORTALL
-		#)
+		# Open XL equivalent has been added below.
+		target_compile_options(${TARGET_NAME}
+			PRIVATE
+				-fvisibility=default
+		)
 
 		# only shared libraries will generate an export side deck
 		get_target_property(target_type ${TARGET_NAME} TYPE)

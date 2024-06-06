@@ -68,8 +68,6 @@ static intptr_t zos_init_yielding(void);
 intptr_t sem_getvalue_zos(j9sem_t s);
 void call_omrthread_init(void);
 intptr_t sem_trywait_zos(j9sem_t s);
-int setenv(const char *name, const char *value, int overwrite) __THROW;
-char *getenv(const char *name) __THROW;
 
 #if defined (OMRZTPF)
 void  ztpf_init_proc(void);

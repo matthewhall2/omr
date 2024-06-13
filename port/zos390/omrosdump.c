@@ -26,7 +26,9 @@
  * @brief Dump formatting
  */
 
+#if defined(__open_xl__)
 #define _EXT
+#endif
 
 #include <errno.h>
 #include <stdio.h>

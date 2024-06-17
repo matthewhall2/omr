@@ -45,7 +45,9 @@
  * Include all system header files.
  * ======================================================================
  */
+#if defined(__open_xl__)
 #define _EXT
+#endif
 #define _OPEN_SYS_FILE_EXT  /* For SETCVTOFF */    /*ibm@57265*/
 #include <unistd.h>
 #include <fcntl.h>          /* <--SETCVTOFF in here */

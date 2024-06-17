@@ -78,9 +78,7 @@
 		inline void __yield() { _mm_pause(); }
 #elif defined(__GNUC__) && (defined(J9X86) || defined(J9HAMMER)) /* defined(_MSC_VER) */
 		inline void __yield() { __asm volatile ("pause"); }
-#elif defined(__clang__) && defined(J9ZOS390)
-		inline void __yield() { __asm volatile ("* AtomicOperations::__yield"); }
-#elif defined(J9ZOS390)
+#elif defined(J9ZOS390) /* defined(__GNUC__) && (defined(J9X86) || defined(J9HAMMER)) */
 #pragma convlit(suspend)
 		inline void __yield() { __asm__ volatile (" nop 0"); }
 #pragma convlit(resume)
@@ -104,8 +102,6 @@
 #pragma convlit(suspend)
 		inline void __nop() { __asm__ volatile (" nop 0"); }
 #pragma convlit(resume)
-#elif defined(J9ZOS390) && defined(__clang__)
-		inline void __nop() { __asm__ volatile (" NOP"); }
 #else /* GCC && XL */
 		inline void __nop() { __asm__ volatile ("nop"); }
 #endif

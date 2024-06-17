@@ -77,7 +77,7 @@ getTimebase(void)
 #endif /* OMR_ENV_DATA64 */
 #endif /* GCC 4.8 */
 
-#elif (defined(LINUX) && defined(S390)) || (defined(__clang__) && defined(J9ZOS390))
+#elif (defined(LINUX) && defined(S390)) || (defined(__open_xl__) && defined(J9ZOS390))
 	asm(" stck %0" : "=m" (tsc));
 #elif defined(J9ZOS390)
 	__stck((unsigned long long*)&tsc);

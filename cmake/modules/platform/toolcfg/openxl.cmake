@@ -1,10 +1,9 @@
 ###############################################################################
-
-# Copyright (c) 2017, 2024 IBM Corp. and others
+# Copyright IBM Corp. and others 2024
 #
 # This program and the accompanying materials are made available under
 # the terms of the Eclipse Public License 2.0 which accompanies this
-# distribution and is available at http://eclipse.org/legal/epl-2.0
+# distribution and is available at https://www.eclipse.org/legal/epl-2.0/
 # or the Apache License, Version 2.0 which accompanies this distribution
 # and is available at https://www.apache.org/licenses/LICENSE-2.0.
 #
@@ -15,9 +14,9 @@
 # License, version 2 with the OpenJDK Assembly Exception [2].
 #
 # [1] https://www.gnu.org/software/classpath/license.html
-# [2] http://openjdk.java.net/legal/assembly-exception.html
+# [2] https://openjdk.org/legal/assembly-exception.html
 #
-# SPDX-License-Identifier: EPL-2.0 OR Apache-2.0 OR GPL-2.0 WITH Classpath-exception-2.0 OR LicenseRef-GPL-2.0 WITH Assembly-exception
+# SPDX-License-Identifier: EPL-2.0 OR Apache-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0 OR GPL-2.0-only WITH OpenJDK-assembly-exception-1.0
 ###############################################################################
 
 if(CMAKE_C_COMPILER_IS_XLCLANG)
@@ -35,12 +34,10 @@ if(OMR_HOST_ARCH STREQUAL "ppc")
 	set(OMR_C_WARNINGS_AS_ERROR_FLAG -qhalt=w)
 	set(OMR_CXX_WARNINGS_AS_ERROR_FLAG -qhalt=w)
 
-	# There is no enhanced warning for XLC right now
 	set(OMR_C_ENHANCED_WARNINGS_FLAG )
 	set(OMR_CXX_ENHANCED_WARNINGS_FLAG )
 
 	list(APPEND OMR_PLATFORM_COMPILE_OPTIONS
-		#-qalias=noansi   # no openxl equivalent
 		-qxflag=LTOL:LTOL0
 	)
 
@@ -51,16 +48,16 @@ if(OMR_HOST_ARCH STREQUAL "ppc")
 			-m64
 		)
 	else()
-		# -qarch should be there for 32 and 64 C/CXX flags but the C compiler is used for the assembler and it has trouble with some assembly files if it is specified
+		# -march should be there for 32 and 64 C/CXX flags but the C compiler is used for
+		# the assembler and it has trouble with some assembly files if it is specified.
 		list(APPEND OMR_PLATFORM_COMPILE_OPTIONS
-			#-q32  # no equivalent in openxl
 			-march=ppc
 		)
 	endif()
 
 	# Testarossa build variables. Longer term the distinction between TR and the rest
 	# of the OMR code should be heavily reduced. In the mean time, we keep
-	# the distinction
+	# the distinction.
 
 	# TR_COMPILE_OPTIONS are variables appended to CMAKE_{C,CXX}_FLAGS, and so
 	# apply to both C and C++ compilations.
@@ -73,7 +70,6 @@ if(OMR_HOST_ARCH STREQUAL "ppc")
 	)
 
 	if(NOT CMAKE_C_COMPILER_IS_XLCLANG)
-		# xlc/xlc++ options
 		list(APPEND TR_COMPILE_OPTIONS
 			-qnotempinc
 			-qenum=small
@@ -81,7 +77,7 @@ if(OMR_HOST_ARCH STREQUAL "ppc")
 		)
 	endif()
 
-	# Configure the platform dependent library for multithreading
+	# Configure the platform dependent library for multithreading.
 	set(OMR_PLATFORM_THREAD_LIBRARY -lpthread)
 endif()
 
@@ -90,10 +86,8 @@ if(OMR_OS_AIX)
 	list(APPEND OMR_PLATFORM_CXX_COMPILE_OPTIONS -qlanglvl=extended0x)
 
 	if(CMAKE_C_COMPILER_IS_XLCLANG)
-		# xlclang/xlclang++ options
 		list(APPEND OMR_PLATFORM_COMPILE_OPTIONS -qxlcompatmacros)
 	else()
-		# xlc/xlc++ options
 		list(APPEND OMR_PLATFORM_COMPILE_OPTIONS -qinfo=pro)
 	endif()
 
@@ -121,43 +115,24 @@ elseif(OMR_OS_ZOS)
 	set(CMAKE_SHARED_LIBRARY_CREATE_C_FLAGS "--shared")
 	set(CMAKE_SHARED_LIBRARY_CREATE_CXX_FLAGS "--shared")
 
-
 	set(CMAKE_ASM_FLAGS "-fno-integrated-as")
 	string(APPEND CMAKE_ASM_FLAGS " \"-Wa,-mgoff\"")
 	string(APPEND CMAKE_ASM_FLAGS " \"-Wa,-mSYSPARM(BIT64)\"")
 
-    # commenting out options progressively as they are not needed with Open XL, can remove in cleanup later.
 	list(APPEND OMR_PLATFORM_COMPILE_OPTIONS
-		#"\"-Wc,xplink\""               # link with xplink calling convention
-		#"\"-Wc,rostring\""             # place string literals in read only storage
-		#"\"-Wc,FLOAT(IEEE,FOLD,AFP)\"" # Use IEEE (instead of IBM Hex Format) style floats
-		#"\"-Wc,enum(4)\""              # Specifies how many bytes of storage enums occupy
-		#"\"-Wa,goff\""                 # Assemble into GOFF object files
-		#"\"-Wc,NOANSIALIAS\""          # Do not generate ALIAS binder control statements
 		"-fstrict-aliasing"
-		#"\"-Wc,TARGET(${OMR_ZOS_COMPILE_TARGET})\""     # Generate code for the target operating system
 		"-mzos-target=${OMR_ZOS_COMPILE_TARGET}"
 		"-m64"
 	)
 
 	list(APPEND OMR_PLATFORM_C_COMPILE_OPTIONS
-		#"\"-Wc,ARCH(${OMR_ZOS_COMPILE_ARCHITECTURE})\""
 		-march=${OMR_ZOS_COMPILE_ARCHITECTURE}
-		#"\"-Wc,TUNE(${OMR_ZOS_COMPILE_TUNE})\""  # not needed openxl
-		#"\"-Wl,compat=${OMR_ZOS_LINK_COMPAT}\""
-		#"\"-Wc,langlvl(extc99)\"" # best suggested to remove -std option altogether
 	)
 
 	list(APPEND OMR_PLATFORM_CXX_COMPILE_OPTIONS
-		#-+                             # Compiles any file as a C++ language file
 		-march=${OMR_ZOS_COMPILE_ARCHITECTURE}
-		#"\"-Wc,TUNE(${OMR_ZOS_COMPILE_TUNE})\""  # not needed openxl
-		#"\"-Wl,compat=${OMR_ZOS_LINK_COMPAT}\""
-		#"\"-Wc,langlvl(extended)\""
-		"-std=c++14" 
-		#-qlanglvl=extended0x
+		"-std=c++14"
 		-fasm
-		#-fno-integrated-as             # Ensure the clang integrated assembler is not used
 	)
 
 	list(APPEND OMR_PLATFORM_SHARED_COMPILE_OPTIONS
@@ -176,7 +151,7 @@ elseif(OMR_OS_ZOS)
 
 	# Testarossa build variables. Longer term the distinction between TR and the rest
 	# of the OMR code should be heavily reduced. In the mean time, we keep
-	# the distinction
+	# the distinction.
 
 	# TR_COMPILE_OPTIONS are variables appended to CMAKE_{C,CXX}_FLAGS, and so
 	# apply to both C and C++ compilations.
@@ -191,33 +166,30 @@ elseif(OMR_OS_ZOS)
 		-qnocsect
 	)
 
-	# Configure the platform dependent library for multithreading
+	# Configure the platform dependent library for multithreading.
 	set(OMR_PLATFORM_THREAD_LIBRARY "")
 endif()
 
 set(SPP_CMD ${CMAKE_C_COMPILER})
 
 if(CMAKE_C_COMPILER_IS_XLCLANG)
-	# xlclang/xlclang++ options
 	# The -P option doesn't sit well with XLClang, so it's not included. It causes:
 	# "ld: 0711-317 ERROR: Undefined symbol: <SYMBOL>" when libj9jit29.so is getting linked.
 	set(SPP_FLAGS -E)
 else()
-	# xlc/xlc++ options
 	set(SPP_FLAGS -E -P)
 endif()
 
 if(OMR_OS_ZOS)
 	function(_omr_toolchain_process_exports TARGET_NAME)
 		# Any type of target which says it has exports should get the DLL, and EXPORTALL
-		# compile flags
+		# compile flags.
 		# Open XL equivalent has been added below.
 		target_compile_options(${TARGET_NAME}
 			PRIVATE
 				-fvisibility=default
 		)
 
-		# only shared libraries will generate an export side deck
 		get_target_property(target_type ${TARGET_NAME} TYPE)
 		if(NOT target_type STREQUAL "SHARED_LIBRARY")
 			return()
@@ -232,7 +204,6 @@ if(OMR_OS_ZOS)
 	endfunction()
 else()
 	function(_omr_toolchain_process_exports TARGET_NAME)
-		# we only need to do something if we are dealing with a shared library
 		get_target_property(target_type ${TARGET_NAME} TYPE)
 		if(NOT target_type STREQUAL "SHARED_LIBRARY")
 			return()

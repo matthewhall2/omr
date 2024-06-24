@@ -131,7 +131,7 @@ elseif(OMR_OS_ZOS)
 
 	list(APPEND OMR_PLATFORM_CXX_COMPILE_OPTIONS
 		-march=${OMR_ZOS_COMPILE_ARCHITECTURE}
-		"-std=c++14"
+		"-std=gnu++14"
 		-fasm
 	)
 
@@ -157,13 +157,11 @@ elseif(OMR_OS_ZOS)
 	# apply to both C and C++ compilations.
 	list(APPEND TR_COMPILE_OPTIONS
 		-DYYLMAX=1000
-		-Wa,asa
 	)
 
 	list(APPEND TR_CXX_COMPILE_OPTIONS
-		-Wc,EXH
-		-qhaltonmsg=CCN6102
-		-qnocsect
+		-Wuninitialized
+		-mnocsect
 	)
 
 	# Configure the platform dependent library for multithreading.

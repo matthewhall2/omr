@@ -24,10 +24,10 @@
  * @ddr_namespace: default
  */
 
-                   ??=ifndef __edcwccwi                                         
-                   ??=ifdef __COMPILER_VER__                                    
-                     ??=pragma filetag("IBM-1047")                              
-                   ??=endif                                                     
+                   #ifndef __edcwccwi                                         
+                   #ifdef __COMPILER_VER__                                    
+                     #pragma filetag("IBM-1047")                              
+                   #endif                                                     
                    #define __edcwccwi 1                                         
                    #pragma nomargins nosequence                                 
                    #pragma checkout(suspend)                                    
@@ -279,7 +279,7 @@ struct __jumpinfo_vr_ext
 	U_128 __ji_ve_savearea[32];
 } __jumpinfo_vr_ext_t_;
 
-#if ((!defined(_LP64) && defined(__XPLINK__))   ||         \                    
+#if ((!defined(_LP64) && defined(__XPLINK__))   ||         \
      (defined(_LP64)  && (__EDC_TARGET >= __EDC_LE4107)))
 typedef                                                                         
 struct __jumpinfo                                                               
@@ -360,7 +360,7 @@ __set_stack_softlimit
                                                                                 
 #endif /* __XPLINK__  */                                                        
 #else                                                                           
-  #define __set_stack_softlimit(a) \                                            
+  #define __set_stack_softlimit(a) \
     struct __no64bitSupport __set_stack_softlimit                               
 #endif /* ! _LP64 */                                                            
                                                                                 
@@ -580,7 +580,7 @@ struct __event1_s {
                                                                                 
   #endif                                                                        
   #else                                                                         
-    #define __stack_info(a,b) \                                                 
+    #define __stack_info(a,b) \
       struct __no64bitSupport __stack_info                                      
   #endif                                                                        
                                                                                 
@@ -610,4 +610,4 @@ struct __event1_s {
 #endif                                                                          
                                                                                 
                    #pragma checkout(resume)                                     
-                   ??=endif /* __edcwccwi */
+                   #endif /* __edcwccwi */

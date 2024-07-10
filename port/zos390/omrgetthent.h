@@ -28,7 +28,7 @@
 #define PGTHA_ACCESS_CURRENT 1
 #define PGTHA_FLAG_PROCESS_DATA 0x80
 
-#pragma pack(push, 1)
+#pragma pack(1)
 
 typedef struct pgtha {
 	/* Start of PGTHACONTINUE group. */

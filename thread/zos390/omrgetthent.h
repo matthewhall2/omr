@@ -51,7 +51,7 @@
 	#pragma linkage(BPX1GTH,OS)
 #endif /* _LP64 */
 
-#pragma pack(push, 1)
+#pragma pack(1)
 
 /*
 PGTHA                 DSECT ,        I N P U T - - - - - - - - - - -

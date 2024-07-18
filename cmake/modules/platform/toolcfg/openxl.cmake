@@ -25,6 +25,7 @@ if(CMAKE_C_COMPILER_IS_XLCLANG)
 		# in the CMAKE CXX/C/ASM FLAGS, since xlclang/xlclang++ are not compatible
 		# with the e or s options.
 		omr_remove_flags(CMAKE_ASM_FLAGS -qhalt=e)
+<<<<<<< HEAD
 		omr_remove_flags(CMAKE_CXX_FLAGS -qhalt=s)
 		omr_remove_flags(CMAKE_C_FLAGS   -qhalt=e)
 	endmacro(omr_toolconfig_global_setup)
@@ -81,6 +82,13 @@ if(OMR_HOST_ARCH STREQUAL "ppc")
 	set(OMR_PLATFORM_THREAD_LIBRARY -lpthread)
 endif()
 
+=======
+		omr_remove_flags(CMAKE_C_FLAGS   -qhalt=e)
+		omr_remove_flags(CMAKE_CXX_FLAGS -qhalt=s)
+	endmacro(omr_toolconfig_global_setup)
+endif()
+
+>>>>>>> bcdb1e7fa (Add Open XL toolchain and config changes for z/OS)
 if(OMR_OS_AIX)
 	list(APPEND OMR_PLATFORM_C_COMPILE_OPTIONS -qlanglvl=extended)
 	list(APPEND OMR_PLATFORM_CXX_COMPILE_OPTIONS -qlanglvl=extended0x)
@@ -102,7 +110,10 @@ if(OMR_OS_AIX)
 		set(CMAKE_C_ARCHIVE_CREATE "<CMAKE_AR> -X64 cr <TARGET> <LINK_FLAGS> <OBJECTS>")
 		set(CMAKE_C_ARCHIVE_FINISH "<CMAKE_RANLIB> -X64 <TARGET>")
 	endif()
+<<<<<<< HEAD
 
+=======
+>>>>>>> bcdb1e7fa (Add Open XL toolchain and config changes for z/OS)
 elseif(OMR_OS_LINUX)
 	list(APPEND OMR_PLATFORM_COMPILE_OPTIONS
 		-qxflag=selinux
@@ -117,7 +128,13 @@ elseif(OMR_OS_ZOS)
 
 	set(CMAKE_ASM_FLAGS "-fno-integrated-as")
 	string(APPEND CMAKE_ASM_FLAGS " \"-Wa,-mgoff\"")
+<<<<<<< HEAD
 	string(APPEND CMAKE_ASM_FLAGS " \"-Wa,-mSYSPARM(BIT64)\"")
+=======
+	if(OMR_ENV_DATA64)
+		string(APPEND CMAKE_ASM_FLAGS " \"-Wa,-mSYSPARM(BIT64)\"")
+	endif()
+>>>>>>> bcdb1e7fa (Add Open XL toolchain and config changes for z/OS)
 
 	list(APPEND OMR_PLATFORM_COMPILE_OPTIONS
 		"-fstrict-aliasing"

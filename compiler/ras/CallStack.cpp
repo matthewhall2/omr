@@ -262,7 +262,7 @@ void TR_LinuxCallStackIterator::printStackBacktrace(TR::Compilation *comp)
 
 #if !defined(__open_xl__)
 extern "builtin" void *__gdsa();
-#endif
+#endif // !defined(__open_xl__)
 
 TR_MvsCallStackIterator::TR_MvsCallStackIterator ()
       : TR_CallStackIterator()
@@ -271,7 +271,7 @@ TR_MvsCallStackIterator::TR_MvsCallStackIterator ()
    _parms.__tf_dsa_addr = (void*)__builtin_s390_gdsa();
 #else
    _parms.__tf_dsa_addr = (void*)__gdsa();
-#endif
+#endif // defined(__open_xl__)
    _parms.__tf_caa_addr = (void*)__gtca();
    _parms.__tf_call_instruction = 0;
    _parms.__tf_pu_addr = 0;

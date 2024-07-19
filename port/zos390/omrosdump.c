@@ -28,7 +28,11 @@
 
 #if defined(__open_xl__)
 #define _EXT
+<<<<<<< HEAD
 #endif
+=======
+#endif /* defined(__open_xl__) */
+>>>>>>> 053290074 (Explicit header definitions for Open XL warnings)
 
 #include <errno.h>
 #include <stdio.h>
@@ -327,7 +331,7 @@ tdump_wrapper(struct OMRPortLibrary *portLibrary, char *filename, char *dsnName)
 static intptr_t
 tdump(struct OMRPortLibrary *portLibrary, char *asciiLabel, char *ebcdicLabel, uint32_t *returnCode, uint32_t *reasonCode)
 {
-	struct ioparms_t {
+	struct ioparmss_t {
 		uint64_t plist[256];
 		uint32_t retcode;
 		uint32_t rsncode;
@@ -339,7 +343,8 @@ tdump(struct OMRPortLibrary *portLibrary, char *asciiLabel, char *ebcdicLabel, u
 		char dsn[256];
 	} *dsnPattern31;
 
-	extern void _TDUMP(struct ioparms_t *ioparms, struct dsn_pattern_t *dsn_pattern); /* defined in omrgenerate_ieat_dump.s */
+	/* Defined in omrgenerate_ieat_dump.s */
+	extern void _TDUMP(struct ioparms_t *ioparms, struct dsn_pattern_t *dsn_pattern);
 
 	/* _TDUMP subroutine expects 31 bit addresses */
 	ioParms31 = __malloc31(sizeof(*ioParms31));

@@ -49,11 +49,10 @@
 #pragma map(pthread_quiesce, "BPX1PTQ")
 #endif /* defined(OMR_ENV_DATA64) */
 
-#if defined(OMR_ENV_DATA64)
-#else
+#if !defined(OMR_ENV_DATA64)
 #pragma linkage(pthread_quiesce_and_get_np_X, OS_UPSTACK)
 #pragma map(pthread_quiesce_and_get_np_X, "BPX1PQG")
-#endif
+#endif /* !defined(OMR_ENV_DATA64) */
 
 #ifdef MAX_NAME
 #undef MAX_NAME
@@ -64,7 +63,7 @@
 
 typedef __mcontext_t_ thread_context;
 
-#pragma pack(push, 1)
+#pragma pack(1)
 
 /* Program routine entry area (XPLINK) */
 typedef struct XPLINK_Routine_entry {

@@ -28,11 +28,7 @@
 
 #if defined(__open_xl__)
 #define _EXT
-<<<<<<< HEAD
-#endif
-=======
 #endif /* defined(__open_xl__) */
->>>>>>> 053290074 (Explicit header definitions for Open XL warnings)
 
 #include <errno.h>
 #include <stdio.h>

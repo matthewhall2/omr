@@ -35,7 +35,7 @@
  * The compiler will find this header file in preference to the system one.
  * ===========================================================================
  */
-
+#include <dlfcn.h>
 #if __TARGET_LIB__ == 0X22080000                                   /*ibm@28725*/
 #include <//'PP.ADLE370.OS39028.SCEEH.H(dll)'>                     /*ibm@28725*/
 #else                                                              /*ibm@28725*/
@@ -50,7 +50,7 @@
 		#ifdef __cplusplus
                   extern "C" {
 		#endif
-	        dllhandle* atoe_dllload(char *);
+	        dllhandle* atoe_dllload(const char *);
 		#ifdef __cplusplus
                   }
 		#endif
@@ -66,7 +66,7 @@
                 #ifdef __cplusplus
                   extern "C" {
                 #endif 
-                void (*atoe_dllqueryfn(dllhandle* dllHandle, char* funcName)) ();
+                void (*atoe_dllqueryfn(dllhandle* dllHandle, const char* funcName)) ();
                 #ifdef __cplusplus
                   }
                 #endif

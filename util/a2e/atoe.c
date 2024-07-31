@@ -47,7 +47,7 @@
  */
 #if defined(__open_xl__)
 #define _EXT
-#endif
+#endif /* defined(__open_xl__) */
 #define _OPEN_SYS_FILE_EXT  /* For SETCVTOFF */    /*ibm@57265*/
 #include <unistd.h>
 #include <fcntl.h>          /* <--SETCVTOFF in here */
@@ -135,8 +135,8 @@ static __ccsid_t newFileCCSID = 0;
 #ifdef LOGGING
 #include <dg_defs.h>
 #else
-#define Log(level,message)
-#define Log1(level,message,x1)
+#define Log(level,message) fprintf(stderr, message)
+#define Log1(level,message,x1) fprintf(stderr, message, x1)
 #endif
 
 
@@ -2396,7 +2396,7 @@ iconv_init(void)
  * returns     -
  *************************************************************************/
 dllhandle *
-atoe_dllload(char *dllName)
+atoe_dllload(const char *dllName)
 {
 	dllhandle *handle;
 	char *d = a2e(dllName, strlen(dllName));
@@ -2438,7 +2438,7 @@ atoe_dllqueryvar(dllhandle *dllHandle, char *varName)
 }
 
 
-void (*atoe_dllqueryfn(dllhandle *dllHandle, char *funcName))()
+void (*atoe_dllqueryfn(dllhandle *dllHandle, const char *funcName))()
 {
 	char *n = a2e_string(funcName);
 	void (*r)() = dllqueryfn(dllHandle, n);

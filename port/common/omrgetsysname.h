@@ -26,6 +26,7 @@
 #include "omrcomp.h"
 
 struct OMRPortLibrary;
+
 /**
  * Get the zOS SYSNAME sysparm.
  *

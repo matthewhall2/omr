@@ -135,8 +135,8 @@ static __ccsid_t newFileCCSID = 0;
 #ifdef LOGGING
 #include <dg_defs.h>
 #else
-#define Log(level,message) fprintf(stderr, message)
-#define Log1(level,message,x1) fprintf(stderr, message, x1)
+#define Log(level,message)
+#define Log1(level,message,x1)
 #endif
 
 

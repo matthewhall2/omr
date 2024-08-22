@@ -1226,7 +1226,7 @@ genericLongShiftSingle(TR::Node * node, TR::CodeGenerator * cg, TR::InstOpCode::
             }
          else if (firstChild->getOpCodeValue() == TR::land && firstChild->getReferenceCount() == 1)
             {
-            trgReg = TR::TreeEvaluator::tryToReplaceShiftLandWithRotateInstruction(firstChild, cg, value, node->getOpCodeValue() == TR::lshl);   
+            trgReg = TR::TreeEvaluator::tryToReplaceShiftLandWithRotateInstruction(firstChild, cg, value, node->getOpCodeValue() == TR::lshl);
             if (NULL != trgReg)
                {
                node->setRegister(trgReg);

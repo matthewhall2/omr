@@ -326,6 +326,7 @@ generateS390Compare(TR::Node * node, TR::CodeGenerator * cg, TR::InstOpCode::Mne
 static TR::Register*
 xmaxxminHelper(TR::Node* node, TR::CodeGenerator* cg, TR::InstOpCode::Mnemonic compareRROp, TR::InstOpCode::S390BranchCondition branchCond, TR::InstOpCode::Mnemonic moveRROp)
    {
+   // use load and test on in swap region to flip the quiet bit
    TR::Node* lhsNode = node->getChild(0);
    TR::Node* rhsNode = node->getChild(1);
 
@@ -347,13 +348,13 @@ xmaxxminHelper(TR::Node* node, TR::CodeGenerator* cg, TR::InstOpCode::Mnemonic c
    //Support float and double +0/-0 comparisons adhering to IEEE 754 standard
    if (node->getOpCode().isFloatingPoint())
       {
+
       //Checking if operands are equal, then branching to equalRegion, otherwise fall through for NaN case handling
       generateS390BranchInstruction(cg, TR::InstOpCode::BRC, TR::InstOpCode::COND_CC0, node, equalRegion);
+      TR::InstOpCode::LTDBR;
 
-      // If first operand is NaN, then we are done, otherwise fallthrough to move second operand as result
-      generateRREInstruction(cg, node->getOpCode().isDouble() ? TR::InstOpCode::LTDBR : TR::InstOpCode::LTEBR, node, lhsReg, lhsReg);
-      generateS390BranchInstruction(cg, TR::InstOpCode::BRC, TR::InstOpCode::COND_CC3, node, cFlowRegionEnd);
-      //branch to swap label, since either second operand is NaN, or entire satisfies the alternate condition code
+      //to to NaN region if NaN, otherwise fall through to swap
+      generateS390BranchInstruction(cg, TR::InstOpCode::BRC, TR::InstOpCode::COND_CC3, node, nanRegion);
       generateS390BranchInstruction(cg, TR::InstOpCode::BRC, TR::InstOpCode::COND_BRC, node, swap);
 
       //code for handling +0/-0 comparisons when operands are equal
@@ -361,20 +362,25 @@ xmaxxminHelper(TR::Node* node, TR::CodeGenerator* cg, TR::InstOpCode::Mnemonic c
       if (node->getOpCode().isMax())
          {
          //For Max calls, checking if first operand is +0, then we are done, otherwise fall through for swap
-         generateRXEInstruction(cg, node->getOpCode().isDouble() ? TR::InstOpCode::TCDB : TR::InstOpCode::TCEB, node, lhsReg, generateS390MemoryReference(0x800, cg), 0);  // lhsReg is +0 ?
-         generateS390BranchInstruction(cg, TR::InstOpCode::BRC, TR::InstOpCode::COND_MASK4, node, cFlowRegionEnd);   // it is +0
+         // We use Load and Test (as opposed to Test Data Class) since it sets the quiet bit
+         generateRREInstruction(cg, node->getOpCode().isDouble() ? TR::InstOpCode::LTDBR : TR::InstOpCode::LTEBR, node, lhsReg, lhsReg);
+         generateS390BranchInstruction(cg, TR::InstOpCode::BRC, TR::InstOpCode::COND_MASK1, node, cFlowRegionEnd);   // it is +0
+         generateS390BranchInstruction(cg, TR::InstOpCode::BRC, TR::InstOpCode::COND_BRC, node, swap);
          }
       else if (node->getOpCode().isMin())
          {
          //For Min calls, checking if first operand is not +0, then we are done, otherwise fall through for swap
-         generateRXEInstruction(cg, node->getOpCode().isDouble() ? TR::InstOpCode::TCDB : TR::InstOpCode::TCEB, node, lhsReg, generateS390MemoryReference(0x800, cg), 0);  // lhsReg is +0 ?
-         generateS390BranchInstruction(cg, TR::InstOpCode::BRC, TR::InstOpCode::COND_BE, node, cFlowRegionEnd);   // it is not +0
+         generateRXEInstruction(cg, node->getOpCode().isDouble() ? TR::InstOpCode::TCDB : TR::InstOpCode::TCEB, node, lhsReg, generateS390MemoryReference(0x400, cg), 0);  // lhsReg is -0 ?
+         generateS390BranchInstruction(cg, TR::InstOpCode::BRC, TR::InstOpCode::COND_MASK4, node, cFlowRegionEnd);   // it is -0
+         generateS390BranchInstruction(cg, TR::InstOpCode::BRC, TR::InstOpCode::COND_BRC, node, swap);
          }
       }
 
    generateS390LabelInstruction(cg, TR::InstOpCode::label, node, swap);
    //Move resulting operand to lhsReg as fallthrough for alternate Condition Code
    generateRREInstruction(cg, moveRROp, node, lhsReg, rhsReg);
+   // sets quiet bit on sNaN
+   generateRREInstruction(cg, node->getOpCode().isDouble() ? TR::InstOpCode::LTDBR : TR::InstOpCode::LTEBR, node, lhsReg, lhsReg);
 
    TR::RegisterDependencyConditions* deps = new (cg->trHeapMemory()) TR::RegisterDependencyConditions(0, 2, cg);
    deps->addPostConditionIfNotAlreadyInserted(lhsReg, TR::RealRegister::AssignAny);
@@ -390,6 +396,82 @@ xmaxxminHelper(TR::Node* node, TR::CodeGenerator* cg, TR::InstOpCode::Mnemonic c
    return lhsReg;
    }
 
+static TR::Register*
+fpMinMaxVectorHelper(TR::Node *node, TR::CodeGenerator *cg, TR::DataTypes dataType, bool isMaxOp)
+   {
+   TR_ASSERT(node->getNumChildren() >= 1  || node->getNumChildren() <= 2, "node has incorrect number of children");
+   TR_ASSERT(dataType == TR::DataTypes::Double ||  dataType == TR::DataTypes::Float, "incorrect data type");
+
+   int type = dataType == TR::DataTypes::Double ? 3 : 2; //for type mask
+
+   /* ===================== Allocating Registers  ===================== */
+
+   TR::Register      * v16           = cg->allocateRegister(TR_VRF);
+   TR::Register      * v17           = cg->allocateRegister(TR_VRF);
+   TR::Register      * v18           = cg->allocateRegister(TR_VRF);
+
+   /* ===================== Generating instructions  ===================== */
+
+   /* ====== LD FPR0,16(GPR5)       Load a ====== */
+   TR::Register      * v0      = cg->fprClobberEvaluate(node->getFirstChild());
+
+   /* ====== LD FPR2, 0(GPR5)       Load b ====== */
+   TR::Register      * v2      = cg->evaluate(node->getSecondChild());
+
+   /* ====== WFTCIDB V16,V0,X'F'     a == NaN ====== */
+   generateVRIeInstruction(cg, TR::InstOpCode::VFTCI, node, v16, v0, 0xF, 8, dataType);
+
+   /* ====== For Max: WFCHE V17,V0,V2     Compare a >= b ====== */
+   if(isMaxOp)
+      {
+      generateVRRcInstruction(cg, TR::InstOpCode::VFCH, node, v17, v0, v2, 0, 8, dataType);
+      }
+   /* ====== For Min: WFCHE V17,V0,V2     Compare a <= b ====== */
+   else
+      {
+      generateVRRcInstruction(cg, TR::InstOpCode::VFCH, node, v17, v2, v0, 0, 8, dataType);
+      }
+
+   /* ====== VO V16,V16,V17     (a >= b) || (a == NaN) ====== */
+   generateVRRcInstruction(cg, TR::InstOpCode::VO, node, v16, v16, v17, 0, 0, 0);
+
+   /* ====== For Max: WFTCIDB V17,V0,X'800'     a == +0 ====== */
+   if(isMaxOp)
+    {
+       generateVRIeInstruction(cg, TR::InstOpCode::VFTCI, node, v17, v0, 0x800, 8, dataType);
+    }
+   /* ====== For Min: WFTCIDB V17,V0,X'400'     a == -0 ====== */
+   else
+    {
+       generateVRIeInstruction(cg, TR::InstOpCode::VFTCI, node, v17, v0, 0x400, 8, dataType);
+    }
+   /* ====== WFTCIDB V18,V2,X'C00'       b == 0 ====== */
+   generateVRIeInstruction(cg, TR::InstOpCode::VFTCI, node, v18, v2, 0xC00, 8, dataType);
+
+   /* ====== VN V17,V17,V18     (a == -0) && (b == 0) ====== */
+   generateVRRcInstruction(cg, TR::InstOpCode::VN, node, v17, v17, v18, 0, 0, 0);
+
+   /* ====== VO V16,V16,V17     (a >= b) || (a == NaN) || ((a == -0) && (b == 0)) ====== */
+   generateVRRcInstruction(cg, TR::InstOpCode::VO, node, v16, v16, v17, 0, 0, 0);
+
+   /* ====== VSEL V0,V0,V2,V16 ====== */
+   generateVRReInstruction(cg, TR::InstOpCode::VSEL, node, v0, v0, v2, v16);
+   generateRREInstruction(cg, node->getOpCode().isDouble() ? TR::InstOpCode::LTDBR : TR::InstOpCode::LTEBR, node, v0, v0);
+   
+
+   /* ===================== Deallocating Registers  ===================== */
+   cg->stopUsingRegister(v2);
+   cg->stopUsingRegister(v16);
+   cg->stopUsingRegister(v17);
+   cg->stopUsingRegister(v18);
+
+   node->setRegister(v0);
+
+   cg->decReferenceCount(node->getFirstChild());
+   cg->decReferenceCount(node->getSecondChild());
+
+   return node->getRegister();
+   }
 static TR::Register*
 imaximinHelper(TR::Node* node, TR::CodeGenerator* cg, TR::InstOpCode::Mnemonic compareRROp, TR::InstOpCode::S390BranchCondition branchCond, TR::InstOpCode::Mnemonic moveRROp)
    {
@@ -497,7 +579,10 @@ OMR::Z::TreeEvaluator::lmaxEvaluator(TR::Node* node, TR::CodeGenerator* cg)
 TR::Register*
 OMR::Z::TreeEvaluator::fmaxEvaluator(TR::Node* node, TR::CodeGenerator* cg)
    {
-
+   if (cg->getSupportsVectorRegisters())
+      {
+      return fpMinMaxVectorHelper(node, cg, TR::DataTypes::Float, true);
+      }
    //Passing COND_MASK2 to check CC if operand 1 is already greater than operand 2
    return xmaxxminHelper(node, cg, TR::InstOpCode::CEBR, TR::InstOpCode::COND_MASK2, TR::InstOpCode::LER);
    }
@@ -505,6 +590,10 @@ OMR::Z::TreeEvaluator::fmaxEvaluator(TR::Node* node, TR::CodeGenerator* cg)
 TR::Register*
 OMR::Z::TreeEvaluator::dmaxEvaluator(TR::Node* node, TR::CodeGenerator* cg)
    {
+   if (cg->getSupportsVectorRegisters())
+      {
+      return fpMinMaxVectorHelper(node, cg, TR::DataTypes::Double, true);
+      }
    //Passing COND_MASK2 to check CC if operand 1 is already greater than operand 2
    return xmaxxminHelper(node, cg, TR::InstOpCode::CDBR, TR::InstOpCode::COND_MASK2, TR::InstOpCode::LDR);
    }
@@ -524,6 +613,10 @@ OMR::Z::TreeEvaluator::lminEvaluator(TR::Node *node, TR::CodeGenerator *cg)
 TR::Register*
 OMR::Z::TreeEvaluator::fminEvaluator(TR::Node* node, TR::CodeGenerator* cg)
    {
+   if (cg->getSupportsVectorRegisters())
+      {
+      return fpMinMaxVectorHelper(node, cg, TR::DataTypes::Float, false);
+      }
    //Passing COND_MASK4 to check CC if operand 1 is already less than operand 2
    return xmaxxminHelper(node, cg, TR::InstOpCode::CEBR, TR::InstOpCode::COND_MASK4, TR::InstOpCode::LER);
    }
@@ -531,6 +624,10 @@ OMR::Z::TreeEvaluator::fminEvaluator(TR::Node* node, TR::CodeGenerator* cg)
 TR::Register*
 OMR::Z::TreeEvaluator::dminEvaluator(TR::Node* node, TR::CodeGenerator* cg)
    {
+   if (cg->getSupportsVectorRegisters())
+      {
+      return fpMinMaxVectorHelper(node, cg, TR::DataTypes::Double, false);  
+      }
    //Passing COND_MASK4 to check CC if operand 1 is already less than operand 2
    return xmaxxminHelper(node, cg, TR::InstOpCode::CDBR, TR::InstOpCode::COND_MASK4, TR::InstOpCode::LDR);
    }

@@ -350,11 +350,12 @@ xmaxxminHelper(TR::Node* node, TR::CodeGenerator* cg, TR::InstOpCode::Mnemonic c
       {
 
       //Checking if operands are equal, then branching to equalRegion, otherwise fall through for NaN case handling
-      generateS390BranchInstruction(cg, TR::InstOpCode::BRC, TR::InstOpCode::COND_CC0, node, equalRegion);
-      TR::InstOpCode::LTDBR;
+      generateS390BranchInstruction(cg, TR::InstOpCode::BRC, TR::InstOpCode::COND_MASK8, node, equalRegion);
+      TR::InstOpCode::LTDBR; 
 
-      //to to NaN region if NaN, otherwise fall through to swap
-      generateS390BranchInstruction(cg, TR::InstOpCode::BRC, TR::InstOpCode::COND_CC3, node, nanRegion);
+      //to end region if NaN, otherwise fall through to swap
+      generateRREInstruction(cg, node->getOpCode().isDouble() ? TR::InstOpCode::LTDBR : TR::InstOpCode::LTEBR, node, lhsReg, lhsReg);
+      generateS390BranchInstruction(cg, TR::InstOpCode::BRC, TR::InstOpCode::COND_MASK4, node, cFlowRegionEnd);
       generateS390BranchInstruction(cg, TR::InstOpCode::BRC, TR::InstOpCode::COND_BRC, node, swap);
 
       //code for handling +0/-0 comparisons when operands are equal
@@ -363,8 +364,8 @@ xmaxxminHelper(TR::Node* node, TR::CodeGenerator* cg, TR::InstOpCode::Mnemonic c
          {
          //For Max calls, checking if first operand is +0, then we are done, otherwise fall through for swap
          // We use Load and Test (as opposed to Test Data Class) since it sets the quiet bit
-         generateRREInstruction(cg, node->getOpCode().isDouble() ? TR::InstOpCode::LTDBR : TR::InstOpCode::LTEBR, node, lhsReg, lhsReg);
-         generateS390BranchInstruction(cg, TR::InstOpCode::BRC, TR::InstOpCode::COND_MASK1, node, cFlowRegionEnd);   // it is +0
+         generateRXEInstruction(cg, node->getOpCode().isDouble() ? TR::InstOpCode::TCDB : TR::InstOpCode::TCEB, node, lhsReg, generateS390MemoryReference(0x800, cg), 0);  // lhsReg is -0 ?
+         generateS390BranchInstruction(cg, TR::InstOpCode::BRC, TR::InstOpCode::COND_MASK4, node, cFlowRegionEnd);   // it is +0
          generateS390BranchInstruction(cg, TR::InstOpCode::BRC, TR::InstOpCode::COND_BRC, node, swap);
          }
       else if (node->getOpCode().isMin())

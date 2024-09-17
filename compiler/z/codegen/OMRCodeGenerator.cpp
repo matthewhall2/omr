@@ -430,7 +430,7 @@ OMR::Z::CodeGenerator::initialize()
 
    if(supportsAutoSIMD)
       {
-      cg->setSupportsVectorRegisters();
+      //cg->setSupportsVectorRegisters();
       cg->setSupportsAutoSIMD();
       }
    else

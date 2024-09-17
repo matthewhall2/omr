@@ -74,6 +74,7 @@ namespace OMR { typedef OMR::Compilation CompilationConnector; }
 
 class TR_AOTGuardSite;
 class TR_BitVector;
+struct TR_CallTarget;
 class TR_CHTable;
 class TR_FrontEnd;
 class TR_HWPRecord;
@@ -574,6 +575,17 @@ public:
 
    TR::list<TR::Snippet*> *getSnippetsToBePatchedOnClassRedefinition();
 
+  /*
+   * \brief
+   *    Inserts new first block into the IL
+   *
+   * \note
+   *    Inserts an empty block before the current first block
+   *    Moves glRegDeps from the current first block to the new one
+   *
+   */
+   TR::Block *insertNewFirstBlock();
+
    TR::RegisterCandidates *getGlobalRegisterCandidates() { return _globalRegisterCandidates; }
    void setGlobalRegisterCandidates(TR::RegisterCandidates *t) { _globalRegisterCandidates = t; }
 
@@ -851,7 +863,7 @@ public:
    const char *getHotnessName();
 
    template<typename Exception>
-   void failCompilation(const char *format, ...)
+   void OMR_NORETURN failCompilation(const char *format, ...)
       {
       char buffer[512];
 
@@ -1125,6 +1137,24 @@ public:
     */
    TR::Environment& target() { return _target; }
 
+   /**
+    * \brief
+    *    The inline call target, if any, for which IL is currently being generated.
+    *
+    * \return
+    *    the call target
+    */
+   TR_CallTarget *currentILGenCallTarget() { return _currentILGenCallTarget; }
+
+   /**
+    * \brief
+    *    Set the inline call target for which IL is currently being generated.
+    *
+    * This should be set in the inliner just prior to generating IL to inline,
+    * and it should be reset to null afterward.
+    */
+   void setCurrentILGenCallTarget(TR_CallTarget *x) { _currentILGenCallTarget = x; }
+
 private:
    void resetVisitCounts(vcount_t, TR::ResolvedMethodSymbol *);
    int16_t restoreInlineDepthUntil(int32_t stopIndex, TR_ByteCodeInfo &currentInfo);
@@ -1331,6 +1361,8 @@ private:
    typedef std::less<TR_OpaqueClassBlock*> LayoutComparator;
    typedef std::map<TR_OpaqueClassBlock *, const TR::TypeLayout *, LayoutComparator, LayoutAllocator> TypeLayoutMap;
    TypeLayoutMap _typeLayoutMap;
+
+   TR_CallTarget *_currentILGenCallTarget;
 
    /*
     * This must be last

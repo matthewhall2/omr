@@ -195,25 +195,30 @@ struct TR_X86ProcessorInfo
    uint32_t getCPUExtendedModel(uint32_t signature)  {return (signature & CPUID_SIGNATURE_EXTENDEDMODEL_MASK) >> 16;}
    uint32_t getCPUExtendedFamily(uint32_t signature) {return (signature & CPUID_SIGNATURE_EXTENDEDFAMILY_MASK) >> 20;}
 
-   bool isIntelPentium()      { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelPentium; }
-   bool isIntelP6()           { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelP6; }
-   bool isIntelPentium4()     { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelPentium4; }
-   bool isIntelCore2()        { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelCore2; }
-   bool isIntelTulsa()        { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelTulsa; }
-   bool isIntelNehalem()      { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelNehalem; }
-   bool isIntelWestmere()     { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelWestmere; }
-   bool isIntelSandyBridge()  { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelSandyBridge; }
-   bool isIntelIvyBridge()    { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelIvyBridge; }
-   bool isIntelHaswell()      { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelHaswell; }
-   bool isIntelBroadwell()    { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelBroadwell; }
-   bool isIntelSkylake()      { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelSkylake; }
+   bool isIntelPentium()        { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelPentium; }
+   bool isIntelP6()             { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelP6; }
+   bool isIntelPentium4()       { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelPentium4; }
+   bool isIntelCore2()          { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelCore2; }
+   bool isIntelTulsa()          { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelTulsa; }
+   bool isIntelNehalem()        { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelNehalem; }
+   bool isIntelWestmere()       { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelWestmere; }
+   bool isIntelSandyBridge()    { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelSandyBridge; }
+   bool isIntelIvyBridge()      { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelIvyBridge; }
+   bool isIntelHaswell()        { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelHaswell; }
+   bool isIntelBroadwell()      { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelBroadwell; }
+   bool isIntelSkylake()        { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelSkylake; }
+   bool isIntelCascadeLake()    { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelCascadeLake; }
+   bool isIntelCooperLake()     { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelCooperLake; }
+   bool isIntelIceLake()        { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelIceLake; }
+   bool isIntelSapphireRapids() { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelSapphireRapids; }
+   bool isIntelEmeraldRapids()  { return (_processorDescription & 0x000000ff) == TR_ProcessorIntelEmeraldRapids; }
 
-   bool isIntelOldMachine()   { return (isIntelPentium() || isIntelP6() || isIntelPentium4() || isIntelCore2() || isIntelTulsa() || isIntelNehalem()); }
+   bool isIntelOldMachine()     { return (isIntelPentium() || isIntelP6() || isIntelPentium4() || isIntelCore2() || isIntelTulsa() || isIntelNehalem()); }
 
-   bool isAMDK6()             { return (_processorDescription & 0x000000fe) == TR_ProcessorAMDK5; } // accept either K5 or K6
-   bool isAMDAthlonDuron()    { return (_processorDescription & 0x000000ff) == TR_ProcessorAMDAthlonDuron; }
-   bool isAMDOpteron()        { return (_processorDescription & 0x000000ff) == TR_ProcessorAMDOpteron; }
-   bool isAMD15h()            { return (_processorDescription & 0x000000ff) == TR_ProcessorAMDFamily15h; }
+   bool isAMDK6()               { return (_processorDescription & 0x000000fe) == TR_ProcessorAMDK5; } // accept either K5 or K6
+   bool isAMDAthlonDuron()      { return (_processorDescription & 0x000000ff) == TR_ProcessorAMDAthlonDuron; }
+   bool isAMDOpteron()          { return (_processorDescription & 0x000000ff) == TR_ProcessorAMDOpteron; }
+   bool isAMD15h()              { return (_processorDescription & 0x000000ff) == TR_ProcessorAMDFamily15h; }
 
    bool isGenuineIntel() {return _vendorFlags.testAny(TR_GenuineIntel);}
    bool isAuthenticAMD() {return _vendorFlags.testAny(TR_AuthenticAMD);}
@@ -380,6 +385,17 @@ class OMR_EXTENSIBLE CodeGenerator : public OMR::CodeGenerator
    void doRegisterAssignment(TR_RegisterKinds kindsToAssign);
    void doBinaryEncoding();
 
+
+   /*
+    * \brief
+    *        Adds items describing cold code cache to RSSReport
+    *
+    * \param coldCode
+    *        Starting address of the cold code cache
+    *
+    */
+   void addItemsToRSSReport(uint8_t *coldCode);
+
    void doBackwardsRegisterAssignment(TR_RegisterKinds kindsToAssign, TR::Instruction *startInstruction, TR::Instruction *appendInstruction = NULL);
 
    bool hasComplexAddressingMode() { return true; }
@@ -483,6 +499,7 @@ class OMR_EXTENSIBLE CodeGenerator : public OMR::CodeGenerator
    int32_t setEstimatedLocationsForDataSnippetLabels(int32_t estimatedSnippetStart);
    void emitDataSnippets();
    bool hasDataSnippets() { return _dataSnippetList.empty() ? false : true; }
+   uint32_t getDataSnippetsSize();
 
    TR::list<TR::Register*> &getSpilledIntRegisters() {return _spilledIntRegisters;}
 
@@ -636,6 +653,14 @@ class OMR_EXTENSIBLE CodeGenerator : public OMR::CodeGenerator
    bool considerTypeForGRA(TR::Node *node);
    bool considerTypeForGRA(TR::DataType dt);
    bool considerTypeForGRA(TR::SymbolReference *symRef);
+
+   /*
+    * \brief move out-of-line instructions from cold code to warm
+    *
+    */
+   void moveOutOfLineInstructionsToWarmCode();
+
+   uint32_t getOutOfLineCodeSize();
 
    /*
     * \brief create a data snippet.
@@ -792,7 +817,7 @@ protected:
       EnableTLHPrefetching                     = 0x00000800, ///< enable software prefetches on TLH allocates
       // Available                             = 0x00001000,
       // Available                             = 0x00002000,
-      TargetSupportsSoftwarePrefetches         = 0x00004000, ///< target processor and OS both support software prefetch instructions
+      // Available                             = 0x00004000,
       MethodEnterExitTracingEnabled            = 0x00008000, ///< trace method enter/exits
       // Available                             = 0x00010000,
       PushPreservedRegisters                   = 0x00020000  ///< we've chosen to save/restore preserved regs using push/pop instructions instead of movs
@@ -839,12 +864,6 @@ protected:
       return _flags.testAny(EnableRegisterAssociations);
       }
    void setEnableRegisterAssociations() {_flags.set(EnableRegisterAssociations);}
-
-   bool targetSupportsSoftwarePrefetches()
-      {
-      return _flags.testAny(TargetSupportsSoftwarePrefetches);
-      }
-   void setTargetSupportsSoftwarePrefetches() {_flags.set(TargetSupportsSoftwarePrefetches);}
 
    bool enableTLHPrefetching()
       {

@@ -28,4 +28,3 @@ ARTIFACT_TYPE := archive
 OBJECTS := pugixml$(OBJEXT)
 
 include $(top_srcdir)/omrmakefiles/rules.mk
-

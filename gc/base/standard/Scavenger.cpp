@@ -4435,6 +4435,11 @@ void
 MM_Scavenger::reportGCCycleFinalIncrementEnding(MM_EnvironmentStandard *env)
 {
 	OMRPORT_ACCESS_FROM_OMRPORT(env->getPortLibrary());
+	uintptr_t cycleType = env->_cycleState->_type;
+	/* set OMR_GC_CYCLE_TYPE_STATE_UNSUCCESSFUL bit in the cycleType of CycleEnd event in scavenge backout case */
+	if (env->getExtensions()->isScavengerBackOutFlagRaised()) {
+		cycleType |= OMR_GC_CYCLE_TYPE_STATE_UNSUCCESSFUL;
+	}
 
 	MM_CommonGCData commonData;
 
@@ -4444,7 +4449,7 @@ MM_Scavenger::reportGCCycleFinalIncrementEnding(MM_EnvironmentStandard *env)
 		omrtime_hires_clock(),
 		J9HOOK_MM_OMR_GC_CYCLE_END,
 		_extensions->getHeap()->initializeCommonGCData(env, &commonData),
-		env->_cycleState->_type,
+		cycleType,
 		omrgc_condYieldFromGC
 	);
 }
@@ -4968,7 +4973,7 @@ MM_Scavenger::reportGCIncrementStart(MM_EnvironmentStandard *env)
 	stats->_startTime = omrtime_hires_clock();
 
 	intptr_t rc = omrthread_get_process_times(&stats->_startProcessTimes);
-	switch (rc){
+	switch (rc) {
 	case -1: /* Error: Function un-implemented on architecture */
 	case -2: /* Error: getrusage() or GetProcessTimes() returned error value */
 		stats->_startProcessTimes._userTime = I_64_MAX;
@@ -4996,7 +5001,7 @@ MM_Scavenger::reportGCIncrementEnd(MM_EnvironmentStandard *env)
 	stats->collectCollectionStatistics(env, stats);
 
 	intptr_t rc = omrthread_get_process_times(&stats->_endProcessTimes);
-	switch (rc){
+	switch (rc) {
 	case -1: /* Error: Function un-implemented on architecture */
 	case -2: /* Error: getrusage() or GetProcessTimes() returned error value */
 		stats->_endProcessTimes._userTime = 0;

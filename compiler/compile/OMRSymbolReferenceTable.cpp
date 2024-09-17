@@ -151,20 +151,20 @@ OMR::SymbolReferenceTable::findOrCreateContiguousArraySizeSymbolRef()
    return element(contiguousArraySizeSymbol);
    }
 
-#if defined(J9VM_GC_ENABLE_SPARSE_HEAP_ALLOCATION)
+#if defined(OMR_GC_SPARSE_HEAP_ALLOCATION)
 TR::SymbolReference *
 OMR::SymbolReferenceTable::findOrCreateContiguousArrayDataAddrFieldShadowSymRef()
    {
    if (!element(contiguousArrayDataAddrFieldSymbol))
       {
-      TR::Symbol * sym = TR::Symbol::createShadow(trHeapMemory(), TR::Address);
+      TR::Symbol * sym = TR::Symbol::createShadow(trHeapMemory(), TR::Int64);
       sym->setContiguousArrayDataAddrFieldSymbol();
       element(contiguousArrayDataAddrFieldSymbol) = new (trHeapMemory()) TR::SymbolReference(self(), contiguousArrayDataAddrFieldSymbol, sym);
       element(contiguousArrayDataAddrFieldSymbol)->setOffset(TR::Compiler->om.offsetOfContiguousDataAddrField());
       }
    return element(contiguousArrayDataAddrFieldSymbol);
    }
-#endif // defined(J9VM_GC_ENABLE_SPARSE_HEAP_ALLOCATION)
+#endif // defined(OMR_GC_SPARSE_HEAP_ALLOCATION)
 
 TR::SymbolReference *
 OMR::SymbolReferenceTable::findContiguousArrayDataAddrFieldShadowSymRef()
@@ -312,9 +312,9 @@ OMR::SymbolReferenceTable::findClassIsArraySymbolRef()
 
 
 TR::SymbolReference *
-OMR::SymbolReferenceTable::findClassAndDepthFlagsSymbolRef()
+OMR::SymbolReferenceTable::findClassDepthAndFlagsSymbolRef()
    {
-   return element(isClassAndDepthFlagsSymbol);
+   return element(isClassDepthAndFlagsSymbol);
    }
 
 
@@ -1528,7 +1528,7 @@ OMR::SymbolReferenceTable::findOrCreateMethodSymbol(
    if (!resolvedMethod)
       symRef->setUnresolved();
    else if (callKind == TR::MethodSymbol::Virtual && cpIndex != -1)
-      symRef->setOffset(resolvedMethod->virtualCallSelector(cpIndex));
+      symRef->setOffset(resolvedMethod->virtualCallSelector());
 
    aliasBuilder.methodSymRefs().set(symRef->getReferenceNumber());
 
@@ -2142,7 +2142,7 @@ const char *OMR::SymbolReferenceTable::_commonNonHelperSymbolNames[] =
    "<addressOfClassOfMethod>",
    "<componentClass>",
    "<isArray>",
-   "<isClassAndDepthFlags>",
+   "<isClassDepthAndFlags>",
    "<isClassFlags>",
    "<vft>",
    "<currentThread>",

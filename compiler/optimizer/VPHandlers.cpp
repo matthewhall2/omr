@@ -273,7 +273,6 @@ static int32_t arrayElementSize(const char *signature, int32_t len, TR::Node *no
          case 'J': return 8;
          case 'Z': return static_cast<int32_t>(TR::Compiler->om.elementSizeOfBooleanArray());
          case 'L':
-         case 'Q':
          default :
             return TR::Compiler->om.sizeofReferenceField();
          }
@@ -1375,8 +1374,17 @@ TR::Node *constrainAnyIntLoad(OMR::ValuePropagation *vp, TR::Node *node)
                {
                TR::VPConstString *constString = baseVPConstraint->getClassType()->asConstString();
 
+               // Get index from offset of a 2-byte element array
                uintptr_t offset = vp->comp()->target().is64Bit() ? (uintptr_t)index->getUnsignedLongInt() : (uintptr_t)index->getUnsignedInt();
-               uintptr_t chIdx = (offset - (uintptr_t)TR::Compiler->om.contiguousArrayHeaderSizeInBytes()) / 2;
+               uintptr_t chIdx = 0;
+               if (array->isDataAddrPointer())
+                  {
+                  chIdx = (offset) / 2;
+                  }
+               else
+                  {
+                  chIdx = (offset - (uintptr_t)TR::Compiler->om.contiguousArrayHeaderSizeInBytes()) / 2;
+                  }
                uint16_t ch = constString->charAt(static_cast<int32_t>(chIdx), vp->comp());
                if (ch != 0)
                   {
@@ -1521,7 +1529,7 @@ bool simplifyJ9ClassFlags(OMR::ValuePropagation *vp, TR::Node *node, bool isLong
    TR::VPConstraint *base = vp->getConstraint(node->getFirstChild(), isGlobal);
    TR::SymbolReference *symRef = node->getSymbolReference();
 
-   if (symRef == vp->comp()->getSymRefTab()->findClassAndDepthFlagsSymbolRef() &&
+   if (symRef == vp->comp()->getSymRefTab()->findClassDepthAndFlagsSymbolRef() &&
          base &&
          base->isJ9ClassObject() == TR_yes &&
          base->getClassType() &&
@@ -1833,7 +1841,7 @@ TR::Node *constrainAload(OMR::ValuePropagation *vp, TR::Node *node)
                         {
                         int32_t len;
                         const char *sig = getFieldSignature(vp, node, len);
-                        if (sig && (len > 0) && (sig[0] == '[' || sig[0] == 'L' || sig[0] == 'Q'))
+                        if (sig && (len > 0) && (sig[0] == '[' || sig[0] == 'L'))
                            {
                            int32_t elementSize = arrayElementSize(sig, len, node, vp);
                            if (elementSize != 0)
@@ -1948,13 +1956,13 @@ TR::Node *constrainAload(OMR::ValuePropagation *vp, TR::Node *node)
                   if (classBlock != jlClass)
                      {
                      constraint = TR::VPClassType::create(vp, sig, len, owningMethod, isFixed, classBlock);
-                     if (*sig == '[' || sig[0] == 'L' || sig[0] == 'Q')
+                     if (*sig == '[' || sig[0] == 'L')
                         {
                         int32_t elementSize = arrayElementSize(sig, len, node, vp);
                         if (elementSize != 0)
                            {
                            constraint = TR::VPClass::create(vp, (TR::VPClassType*)constraint, NULL, NULL,
-                                 TR::VPArrayInfo::create(vp, 0, elementSize == 0 ? TR::getMaxSigned<TR::Int32>() : TR::getMaxSigned<TR::Int32>()/elementSize, elementSize),
+                                 TR::VPArrayInfo::create(vp, 0, TR::Compiler->om.maxArraySizeInElements(elementSize, vp->comp()), elementSize),
                                  TR::VPObjectLocation::create(vp, TR::VPObjectLocation::NotClassObject));
                            }
                         }
@@ -2011,86 +2019,6 @@ static TR::Node *findArrayLengthNode(OMR::ValuePropagation *vp, TR::Node *node, 
    return NULL;
    }
 
-
-
-static TR::Node *findArrayIndexNode(OMR::ValuePropagation *vp, TR::Node *node, int32_t stride)
-  {
-  TR::Node *offset = node->getSecondChild();
-  bool usingAladd = (vp->comp()->target().is64Bit()
-                     ) ?
-          true : false;
-
-  if (usingAladd)
-     {
-     int32_t constValue;
-     if ((offset->getOpCode().isAdd() || offset->getOpCode().isSub()) &&
-         offset->getSecondChild()->getOpCode().isLoadConst())
-        {
-        if (offset->getSecondChild()->getType().isInt64())
-           constValue = (int32_t) offset->getSecondChild()->getLongInt();
-        else
-           constValue = offset->getSecondChild()->getInt();
-        }
-
-     if ((offset->getOpCode().isAdd() &&
-         (offset->getSecondChild()->getOpCode().isLoadConst() &&
-         (constValue == TR::Compiler->om.contiguousArrayHeaderSizeInBytes()))) ||
-         (offset->getOpCode().isSub() &&
-         (offset->getSecondChild()->getOpCode().isLoadConst() &&
-         (constValue == -(int32_t)TR::Compiler->om.contiguousArrayHeaderSizeInBytes()))))
-        {
-        TR::Node *offset2 = offset->getFirstChild();
-        if (offset2->getOpCodeValue() == TR::lmul)
-           {
-           TR::Node *mulStride = offset2->getSecondChild();
-           int32_t constValue;
-           if (mulStride->getOpCode().isLoadConst())
-              {
-              if (mulStride->getType().isInt64())
-                 constValue = (int32_t) mulStride->getLongInt();
-              else
-                 constValue = mulStride->getInt();
-              }
-
-           if (mulStride->getOpCode().isLoadConst() &&
-              constValue == stride)
-              {
-              if (offset2->getFirstChild()->getOpCodeValue() == TR::i2l)
-                 return offset2->getFirstChild()->getFirstChild();
-              else
-                 return offset2->getFirstChild();
-              }
-           }
-        else if (stride == 1)
-          return offset2;
-        }
-     }
-  else
-     {
-     if ((offset->getOpCode().isAdd() &&
-          (offset->getSecondChild()->getOpCode().isLoadConst() &&
-           (offset->getSecondChild()->getInt() == TR::Compiler->om.contiguousArrayHeaderSizeInBytes()))) ||
-           (offset->getOpCode().isSub() &&
-           (offset->getSecondChild()->getOpCode().isLoadConst() &&
-           (offset->getSecondChild()->getInt() == -(int32_t)TR::Compiler->om.contiguousArrayHeaderSizeInBytes()))))
-        {
-        TR::Node *offset2 = offset->getFirstChild();
-        if (offset2->getOpCodeValue() == TR::imul)
-           {
-           TR::Node *mulStride = offset2->getSecondChild();
-           if (mulStride->getOpCode().isLoadConst() &&
-               mulStride->getInt() == stride)
-              {
-              return offset2->getFirstChild();
-              }
-           }
-        else if (stride == 1)
-           return offset2;
-        }
-     }
-  return NULL;
-  }
-
 // For TR::aiadd and TR::aladd
 TR::Node *constrainAddressRef(OMR::ValuePropagation *vp, TR::Node *node)
    {
@@ -2103,18 +2031,7 @@ TR::Node *constrainAddressRef(OMR::ValuePropagation *vp, TR::Node *node)
         parent->getOpCode().isStoreIndirect()) &&
        (parent->getFirstChild() == node)))
       {
-      TR::Node *arrayLoad = node->getFirstChild();
-      TR::Node *arraylengthNode = findArrayLengthNode(vp, arrayLoad, vp->getArraylengthNodes());
-      TR::Node *indexNode = NULL;
-      if (arraylengthNode)
-         indexNode = findArrayIndexNode(vp, node, arraylengthNode->getArrayStride());
-
-      if (arraylengthNode && indexNode)
-         {
-         //TR::VPLessThanOrEqual *rel = TR::VPLessThanOrEqual::create(vp, -1);
-         //rel->setHasArtificialIncrement();
-         //vp->addBlockConstraint(indexNode, rel, arraylengthNode, false);
-         }
+      // Possibly constraint indexNode with arraylength
       }
 
    return node;
@@ -7109,6 +7026,14 @@ TR::Node *constrainIshl(OMR::ValuePropagation *vp, TR::Node *node)
       vp->replaceByConstant(node, constraint, lhsGlobal);
       }
 
+   // Replace shift of constant zero with constant zero
+   if (lhs && lhs->asIntConst()
+       && lhs->asIntConst()->getInt() == 0)
+      {
+      vp->replaceByConstant(node, lhs, lhsGlobal);
+      return node;
+      }
+
    checkForNonNegativeAndOverflowProperties(vp, node);
    return node;
    }
@@ -7132,7 +7057,14 @@ TR::Node *constrainLshl(OMR::ValuePropagation *vp, TR::Node *node)
       vp->replaceByConstant(node, constraint, lhsGlobal);
       }
 
-   if (lhs && lhs->asLongConst() &&
+   // Replace shift of constant zero with constant zero
+   if (lhs && lhs->asLongConst()
+       && lhs->asLongConst()->getLong() == 0)
+      {
+      vp->replaceByConstant(node, lhs, lhsGlobal);
+      return node;
+      }
+   else if (lhs && lhs->asLongConst() &&
        lhs->asLongConst()->getLong() == 1)
       {
       TR::VPConstraint *constraint = TR::VPLongRange::create(vp, TR::getMinSigned<TR::Int64>(), TR::getMaxSigned<TR::Int64>(), true);
@@ -7273,16 +7205,23 @@ TR::Node *constrainIshr(OMR::ValuePropagation *vp, TR::Node *node)
       return node;
    constrainChildren(vp, node);
 
-   bool rhsGlobal;
+   bool lhsGlobal, rhsGlobal;
+   TR::VPConstraint *lhs = vp->getConstraint(node->getFirstChild(), lhsGlobal);
    TR::VPConstraint *rhs = vp->getConstraint(node->getSecondChild(), rhsGlobal);
+   lhsGlobal &= rhsGlobal;
+
+   // Replace shift of constant zero with constant zero
+   if (lhs && lhs->asIntConst()
+       && lhs->asIntConst()->getInt() == 0)
+      {
+      vp->replaceByConstant(node, lhs, lhsGlobal);
+      return node;
+      }
+
    if (rhs && rhs->asIntConst())
       {
       int32_t rhsConst = rhs->asIntConst()->getInt();
       int32_t shiftAmount = rhsConst & 0x01F;
-
-      bool lhsGlobal;
-      TR::VPConstraint *lhs = vp->getConstraint(node->getFirstChild(), lhsGlobal);
-      lhsGlobal &= rhsGlobal;
 
       int32_t low, high;
       if (lhs)
@@ -7328,6 +7267,7 @@ TR::Node *constrainIshr(OMR::ValuePropagation *vp, TR::Node *node)
       //lhs->decReferenceCount();
       //rhs->decReferenceCount();
       }
+
    // this handler is not called for unsigned shifts
    //#ifdef DEBUG
    //else if(!firstChild->getType().isSignedInt()) dumpOptDetails(vp->comp(), "FIXME: Need to support ishr opt for Unsigned datatypes!\n");
@@ -7345,16 +7285,23 @@ TR::Node *constrainLshr(OMR::ValuePropagation *vp, TR::Node *node)
 
    constrainChildren(vp, node);
 
-   bool rhsGlobal;
+   bool lhsGlobal, rhsGlobal;
+   TR::VPConstraint *lhs = vp->getConstraint(node->getFirstChild(), lhsGlobal);
    TR::VPConstraint *rhs = vp->getConstraint(node->getSecondChild(), rhsGlobal);
+   lhsGlobal &= rhsGlobal;
+
+   // Replace shift of constant zero with constant zero
+   if (lhs && lhs->asLongConst()
+       && lhs->asLongConst()->getLong() == 0)
+      {
+      vp->replaceByConstant(node, lhs, lhsGlobal);
+      return node;
+      }
+
    if (rhs && rhs->asIntConst())
       {
       int32_t rhsConst = rhs->asIntConst()->getInt();
       int32_t shiftAmount = rhsConst & 0x03F;
-
-      bool lhsGlobal;
-      TR::VPConstraint *lhs = vp->getConstraint(node->getFirstChild(), lhsGlobal);
-      lhsGlobal &= rhsGlobal;
 
       int64_t low, high;
       if (lhs)
@@ -7422,8 +7369,19 @@ TR::Node *constrainIushr(OMR::ValuePropagation *vp, TR::Node *node)
    //if (parent && parent->getType().isUnsignedInt())
    //   isUnsigned = true;
 
-   bool rhsGlobal;
+   bool lhsGlobal, rhsGlobal;
+   TR::VPConstraint *lhs = vp->getConstraint(node->getFirstChild(), lhsGlobal);
    TR::VPConstraint *rhs = vp->getConstraint(node->getSecondChild(), rhsGlobal);
+   lhsGlobal &= rhsGlobal;
+
+   // Replace shift of constant zero with constant zero
+   if (lhs && lhs->asIntConst()
+       && lhs->asIntConst()->getInt() == 0)
+      {
+      vp->replaceByConstant(node, lhs, lhsGlobal);
+      return node;
+      }
+
    if (rhs && rhs->asIntConst())
       {
       int32_t rhsConst = rhs->asIntConst()->getInt();
@@ -7499,8 +7457,19 @@ TR::Node *constrainLushr(OMR::ValuePropagation *vp, TR::Node *node)
       return node;
    constrainChildren(vp, node);
 
-   bool rhsGlobal;
+   bool lhsGlobal, rhsGlobal;
+   TR::VPConstraint *lhs = vp->getConstraint(node->getFirstChild(), lhsGlobal);
    TR::VPConstraint *rhs = vp->getConstraint(node->getSecondChild(), rhsGlobal);
+   lhsGlobal &= rhsGlobal;
+
+   // Replace shift of constant zero with constant zero
+   if (lhs && lhs->asLongConst()
+       && lhs->asLongConst()->getLong() == 0)
+      {
+      vp->replaceByConstant(node, lhs, lhsGlobal);
+      return node;
+      }
+
    if (rhs && rhs->asIntConst())
       {
       int32_t rhsConst = rhs->asIntConst()->getInt();
@@ -7647,7 +7616,7 @@ TR::Node *constrainIand(OMR::ValuePropagation *vp, TR::Node *node)
                firstChild = firstChild->getChild(0);
 
             if ((firstChild->getOpCodeValue() == TR::iloadi || firstChild->getOpCodeValue() == TR::lloadi) &&
-                (firstChild->getSymbolReference() == vp->comp()->getSymRefTab()->findClassAndDepthFlagsSymbolRef()) &&
+                (firstChild->getSymbolReference() == vp->comp()->getSymRefTab()->findClassDepthAndFlagsSymbolRef()) &&
                 (rhs->getLowInt() == TR::Compiler->cls.flagValueForArrayCheck(vp->comp())))
                {
                if (vp->trace())

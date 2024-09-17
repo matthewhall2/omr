@@ -206,6 +206,10 @@ OMR::CodeGenerator::CodeGenerator(TR::Compilation *comp) :
       _binaryBufferStart(NULL),
       _binaryBufferCursor(NULL),
       _largestOutgoingArgSize(0),
+      _warmCodeEnd(NULL),
+      _coldCodeStart(NULL),
+      _estimatedWarmCodeLength(0),
+      _estimatedColdCodeLength(0),
       _estimatedCodeLength(0),
       _estimatedSnippetStart(0),
       _accumulatedInstructionLengthError(0),
@@ -227,6 +231,7 @@ OMR::CodeGenerator::CodeGenerator(TR::Compilation *comp) :
       _globalFPRPartitionLimit(0),
       _firstInstruction(NULL),
       _appendInstruction(NULL),
+      _lastWarmInstruction(NULL),
       _firstGlobalVRF(-1),
       _lastGlobalVRF(-1),
       _firstOverlappedGlobalVRF(-1),
@@ -358,6 +363,187 @@ OMR::CodeGenerator::generateCodeFromIL()
    return false;
    }
 
+void
+OMR::CodeGenerator::insertGotoIntoLastBlock(TR::Block *lastBlock)
+   {
+   // If the last tree in the last block is not a TR_goto, insert a goto tree
+   // at the end of the block.
+   // If there is a following block the goto will branch to it so that when the
+   // code is split any fall-through will go to the right place.
+   // If there is no following block the goto will branch to the first block; in
+   // this case the goto should never be reached, it is there only to
+   // make sure that the instruction following the last real treetop will be in
+   // method's code, so if it is a helper call (e.g. for a throw) the return address
+   // is in this method's code.
+   //
+   TR::Compilation *comp = self()->comp();
+   TR::TreeTop * tt;
+   TR::Node * node;
+
+   if (lastBlock->getNumberOfRealTreeTops() == 0)
+      tt = lastBlock->getEntry();
+   else
+      tt = lastBlock->getLastRealTreeTop();
+
+   node = tt->getNode();
+
+   if (!(node->getOpCode().isGoto() ||
+         node->getOpCode().isJumpWithMultipleTargets() ||
+         node->getOpCode().isReturn()))
+      {
+
+      if (comp->getOption(TR_TraceCG))
+         {
+         traceMsg(comp, "%s Inserting goto at the end of block_%d\n", SPLIT_WARM_COLD_STRING, lastBlock->getNumber());
+         }
+
+      // Find the block to be branched to
+      //
+      TR::TreeTop * targetTreeTop = lastBlock->getExit()->getNextTreeTop();
+
+      if (targetTreeTop)
+         // Branch to following block. Make sure it is not marked as an
+         // extension block so that it will get a label generated.
+         //
+         targetTreeTop->getNode()->getBlock()->setIsExtensionOfPreviousBlock(false);
+      else
+         // Branch to the first block. This will not be marked as an extension
+         // block.
+         //
+         targetTreeTop = comp->getStartBlock()->getEntry();
+
+      // Generate the goto and insert it into the end of the last warm block.
+      //
+      TR::TreeTop *gotoTreeTop = TR::TreeTop::create(comp, TR::Node::create(node, TR::Goto, 0, targetTreeTop));
+
+      // Move reg deps from BBEnd to goto
+      //
+      TR::Node *bbEnd = lastBlock->getExit()->getNode();
+
+      if (bbEnd->getNumChildren() > 0)
+         {
+         TR::Node *glRegDeps = bbEnd->getChild(0);
+
+         gotoTreeTop->getNode()->setNumChildren(1);
+         gotoTreeTop->getNode()->setChild(0, glRegDeps);
+
+         bbEnd->setChild(0,NULL);
+         bbEnd->setNumChildren(0);
+         }
+
+      tt->insertAfter(gotoTreeTop);
+      }
+   }
+
+void OMR::CodeGenerator::prepareLastWarmBlockForCodeSplitting()
+   {
+   TR::Compilation *comp = self()->comp();
+   TR::TreeTop * tt;
+   TR::Node * node;
+
+   TR::Block * block = NULL;
+   TR::Block * firstColdBlock = NULL, * firstColdExtendedBlock = NULL;
+   int32_t numColdBlocks = 0, numNonOutlinedColdBlocks = 0;
+
+   for (tt = comp->getStartTree(); tt; tt = tt->getNextTreeTop())
+      {
+      node = tt->getNode();
+
+      if (node->getOpCodeValue() == TR::BBStart)
+         {
+         block = node->getBlock();
+
+         // If this is the first cold block, remember where the warm blocks ended.
+         // If it is a warm block and cold blocks have already been found, they
+         // are treated as warm.
+         //
+         if (block->isCold())
+            {
+            if (!firstColdBlock)
+               firstColdBlock = block;
+
+            numColdBlocks++;
+            }
+         else if (firstColdBlock)
+            {
+            firstColdBlock = NULL;
+            firstColdExtendedBlock = NULL;
+            numNonOutlinedColdBlocks = numColdBlocks;
+            }
+
+         if (!block->isExtensionOfPreviousBlock())
+            {
+            if (firstColdBlock &&
+                !firstColdExtendedBlock)
+               {
+               if (!block->getPrevBlock() ||
+                   !block->getPrevBlock()->canFallThroughToNextBlock())
+                  {
+                  firstColdExtendedBlock = block;
+                  }
+               else
+                  {
+                  firstColdBlock = NULL;
+                  numNonOutlinedColdBlocks = numColdBlocks;
+                  }
+               }
+            }
+         }
+      }
+
+   // Mark the split point between warm and cold blocks, so they can be
+   // allocated in different code sections.
+   //
+   TR::Block *lastWarmBlock;
+
+   if (firstColdExtendedBlock)
+      {
+      lastWarmBlock = firstColdExtendedBlock->getPrevBlock();
+
+      if (!lastWarmBlock)
+         {
+         // All the blocks are cold: insert a new goto block ahead of real blocks
+         //
+         lastWarmBlock = comp->insertNewFirstBlock();
+         }
+      }
+   else
+      {
+      // All the blocks are warm - the split point is between the last
+      // instruction and the snippets.
+      //
+      lastWarmBlock = block;
+      }
+
+   lastWarmBlock->setIsLastWarmBlock();
+
+   if (comp->getOption(TR_TraceCG))
+      {
+      traceMsg(comp, "%s Last warm block is block_%d\n", SPLIT_WARM_COLD_STRING, lastWarmBlock->getNumber());
+
+      if (numColdBlocks > 0)
+         traceMsg(comp, "%s Moved to cold code cache %d out of %d cold blocks (%d%%)\n",
+                           SPLIT_WARM_COLD_STRING,
+                           numColdBlocks - numNonOutlinedColdBlocks,
+                           numColdBlocks,
+                           (numColdBlocks - numNonOutlinedColdBlocks)*100/numColdBlocks);
+      }
+
+
+   insertGotoIntoLastBlock(lastWarmBlock);
+   TR::Block *lastBlock = comp->findLastTree()->getNode()->getBlock();
+
+   // If disclaim is enabled, it may happen that nothing follows mainline code
+   // (no snippets or OOL). Then, we need to insert a goto at the end for the
+   // reasons described in insertGotoIntoLastBlock()
+   //
+   if (TR::Options::getCmdLineOptions()->getOption(TR_EnableCodeCacheDisclaiming) &&
+       lastBlock != lastWarmBlock)
+      {
+      insertGotoIntoLastBlock(lastBlock);
+      }
+   }
+
 void OMR::CodeGenerator::lowerTrees()
    {
 
@@ -393,7 +579,6 @@ void OMR::CodeGenerator::lowerTrees()
 
       self()->lowerTreesPreTreeTopVisit(tt, visitCount);
 
-
       // First lower the children
       //
       self()->lowerTreesWalk(node, tt, visitCount);
@@ -408,6 +593,14 @@ void OMR::CodeGenerator::lowerTrees()
    self()->postLowerTrees();
    }
 
+void OMR::CodeGenerator::postLowerTrees()
+   {
+   if (comp()->getOption(TR_SplitWarmAndColdBlocks) &&
+       !comp()->compileRelocatableCode())
+      {
+      self()->prepareLastWarmBlockForCodeSplitting();
+      }
+   }
 
 void
 OMR::CodeGenerator::lowerTreesWalk(TR::Node * parent, TR::TreeTop * treeTop, vcount_t visitCount)
@@ -3386,5 +3579,112 @@ OMR::CodeGenerator::redoTrampolineReservationIfNecessary(TR::Instruction *callIn
    if (calleeSymRef->getReferenceNumber() >= TR_numRuntimeHelpers)
       {
       self()->fe()->reserveTrampolineIfNecessary(self()->comp(), calleeSymRef, true);
+      }
+   }
+
+uint32_t
+OMR::CodeGenerator::getCodeSnippetsSize()
+   {
+   uint32_t codeSnippetsSize = 0;
+
+   TR::list<TR::Snippet*> snippetList = self()->getSnippetList();
+
+   for (auto snippets = snippetList.begin(); snippets != snippetList.end(); ++snippets)
+      codeSnippetsSize += (*snippets)->getLength(0);
+
+   return codeSnippetsSize;
+   }
+
+void
+OMR::CodeGenerator::getMethodStats(MethodStats &methodStats)
+   {
+   auto &codeSize = methodStats.codeSize;
+   auto &warmBlocks = methodStats.warmBlocks;
+   auto &coldBlocks = methodStats.coldBlocks;
+   auto &prologue = methodStats.prologue;
+   auto &snippets = methodStats.snippets;
+   auto &outOfLine = methodStats.outOfLine;
+   auto &unaccounted = methodStats.unaccounted;
+   auto &blocksInColdCache = methodStats.blocksInColdCache;
+   auto &overestimateInColdCache = methodStats.overestimateInColdCache;
+
+   // init
+   codeSize = 0;
+   warmBlocks = 0;
+   coldBlocks = 0;
+   prologue = 0;
+   snippets = 0;
+   outOfLine = 0;
+   unaccounted = 0;
+   blocksInColdCache = 0;
+   overestimateInColdCache = self()->getEstimatedColdLength() - self()->getColdCodeLength();
+
+   uint32_t allBlocks = 0;
+   uint32_t sizeBeforeFirstBlock = 0;
+   bool firstBlock = true;
+   bool insideColdCache = false;
+   uint32_t cold_frequence_size[NUMBER_BLOCK_FREQUENCIES] = {0};
+
+   codeSize = static_cast<uint32_t>(self()->getCodeEnd() - self()->getCodeStart());
+
+   if (self()->getLastWarmInstruction())
+      codeSize = codeSize - static_cast<uint32_t>(self()->getColdCodeStart() - self()->getWarmCodeEnd());
+
+   for (TR::TreeTop *tt = self()->comp()->getMethodSymbol()->getFirstTreeTop(); tt ; tt = tt->getNextTreeTop())
+      {
+      TR::Node *node = tt->getNode();
+
+      TR::Block *block;
+      uint8_t *startCursor, *endCursor;
+
+      if (node->getOpCodeValue() == TR::BBStart)
+         {
+         block = node->getBlock();
+         startCursor = block->getFirstInstruction()->getBinaryEncoding();
+         endCursor = block->getLastInstruction()->getBinaryEncoding();
+
+         uint32_t blockSize = static_cast<uint32_t>(endCursor - startCursor);
+         allBlocks += blockSize;
+
+         if (block->isCold())
+            {
+            coldBlocks += blockSize;
+            int32_t freq = block->getFrequency();
+
+            if (freq >= 0 && freq < NUMBER_BLOCK_FREQUENCIES)
+               cold_frequence_size[freq] += blockSize;
+            }
+
+         if (insideColdCache)
+            blocksInColdCache += blockSize;
+
+         if (firstBlock)
+            {
+            sizeBeforeFirstBlock = (uint32_t)(startCursor - self()->getCodeStart());
+            firstBlock = false;
+            }
+
+         if (block->isLastWarmBlock())
+            insideColdCache = true;
+         }
+      }
+
+   warmBlocks = allBlocks - coldBlocks;
+   snippets = self()->getCodeSnippetsSize() + self()->getDataSnippetsSize();
+   outOfLine = self()->getOutOfLineCodeSize();
+   unaccounted = codeSize - allBlocks - sizeBeforeFirstBlock - outOfLine - snippets;
+   prologue = sizeBeforeFirstBlock;
+
+   if (self()->comp()->getOption(TR_TraceCG))
+      {
+      uint32_t known_cold_blocks = 0;
+      for (int i = 0; i < NUMBER_BLOCK_FREQUENCIES; i++)
+         {
+         traceMsg(self()->comp(), "FOOTPRINT: COLD BLOCK TYPE: %s = %d\n", OMR::CFG::blockFrequencyNames[i],
+                                  cold_frequence_size[i]);
+
+         known_cold_blocks += cold_frequence_size[i];
+         }
+      traceMsg(self()->comp(), "FOOTPRINT: COLD BLOCK TYPE: OTHER = %d\n", coldBlocks - known_cold_blocks);
       }
    }

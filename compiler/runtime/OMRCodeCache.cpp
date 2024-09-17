@@ -1321,6 +1321,9 @@ OMR::CodeCache::printOccupancyStats()
    fprintf(stderr, "Code Cache @%p flags=0x%x almostFull=%d\n", this, _flags, _almostFull);
    fprintf(stderr, "   cold-warm hole size        = %8" OMR_PRIuSIZE " bytes\n", self()->getFreeContiguousSpace());
    fprintf(stderr, "   warmCodeAlloc=%p coldCodeAlloc=%p\n", (void*)_warmCodeAlloc, (void*)_coldCodeAlloc);
+   size_t warmCodeSize = _warmCodeAlloc - _segment->segmentBase();
+   size_t coldCodeSize = _trampolineBase - _coldCodeAlloc;
+   fprintf(stderr, "   warmCodeSize= %zu coldCodeSize= %zu\n", warmCodeSize, coldCodeSize);
    size_t totalReclaimed = 0;
    if (_freeBlockList)
       {
@@ -1553,6 +1556,7 @@ OMR::CodeCache::allocateCodeMemory(size_t warmCodeSize,
    uint8_t * cacheHeapAlloc;
    bool warmIsFreeBlock = false;
    bool coldIsFreeBlock = false;
+   uint8_t *oldColdAlloc = _coldCodeAlloc;
 
    size_t warmSize = warmCodeSize;
    size_t coldSize = coldCodeSize;
@@ -1678,6 +1682,37 @@ OMR::CodeCache::allocateCodeMemory(size_t warmCodeSize,
       *coldCode = coldCodeAddress;
    else
       *coldCode = warmCodeAddress;
+
+   if (OMR::RSSReport::instance() &&
+       !coldIsFreeBlock &&
+       !needsToBeContiguous &&
+       _coldCodeRSSRegion)
+      {
+      _coldCodeRSSRegion->_size = _coldCodeRSSRegion->_start - _coldCodeAlloc;
+
+      int32_t padding = static_cast<int32_t>(oldColdAlloc - coldCodeAddress - coldCodeSize);
+      TR_ASSERT_FATAL(padding >= 0, "Cold code padding should be >= 0");
+
+      if (padding > 0)
+         {
+         OMR::RSSItem *rssItem = new (TR::Compiler->persistentMemory()) OMR::RSSItem(OMR::RSSItem::alignment,
+                                                                                     oldColdAlloc - padding, padding,
+                                                                                     NULL /* counters */);
+         _coldCodeRSSRegion->addRSSItem(rssItem, self()->getReservingCompThreadID());
+         }
+
+      int32_t header = static_cast<uint32_t>(coldCodeAddress - _coldCodeAlloc);
+      TR_ASSERT_FATAL(header >= 0, "Cold code header should be >= 0");
+
+      if (header > 0)
+         {
+         OMR::RSSItem *rssItem = new (TR::Compiler->persistentMemory()) OMR::RSSItem(OMR::RSSItem::header,
+                                                                                     coldCodeAddress - header, header,
+                                                                                     NULL /* counters */);
+         _coldCodeRSSRegion->addRSSItem(rssItem, self()->getReservingCompThreadID());
+         }
+      }
+
    return warmCodeAddress;
    }
 

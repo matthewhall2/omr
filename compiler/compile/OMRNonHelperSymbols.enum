@@ -49,7 +49,7 @@
    addressOfClassOfMethodSymbol,
    componentClassSymbol,
    isArraySymbol,
-   isClassAndDepthFlagsSymbol,
+   isClassDepthAndFlagsSymbol,
    isClassFlagsSymbol,
    vftSymbol,
    currentThreadSymbol,

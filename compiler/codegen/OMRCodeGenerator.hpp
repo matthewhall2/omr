@@ -328,7 +328,7 @@ public:
    void uncommonCallConstNodes();
 
    void preLowerTrees();
-   void postLowerTrees() {}
+   void postLowerTrees();
 
    TR::TreeTop *lowerTree(TR::Node *root, TR::TreeTop *tt);
    void lowerTrees();
@@ -343,6 +343,17 @@ public:
    void lowerTreesPostChildrenVisit(TR::Node * parent, TR::TreeTop * treeTop, vcount_t visitCount);
 
    void lowerTreesPropagateBlockToNode(TR::Node *node);
+
+   /**
+    * @brief Inserts goto into the last block if necessary
+    */
+   void insertGotoIntoLastBlock(TR::Block *lastBlock);
+
+   /**
+    * @brief Finds last warm block and inserts necessary gotos
+    *        for splitting code into warm and cold
+    */
+   void prepareLastWarmBlockForCodeSplitting();
 
    void setUpForInstructionSelection();
    void doInstructionSelection();
@@ -398,6 +409,9 @@ public:
     * @return The instruction being set.
     */
    TR::Instruction *setAppendInstruction(TR::Instruction *ai) {return (_appendInstruction = ai);}
+
+   TR::Instruction *getLastWarmInstruction() {return _lastWarmInstruction;}
+   TR::Instruction *setLastWarmInstruction(TR::Instruction *instr) {return (_lastWarmInstruction = instr);}
 
    TR::TreeTop *getCurrentEvaluationTreeTop() {return _currentEvaluationTreeTop;}
    TR::TreeTop *setCurrentEvaluationTreeTop(TR::TreeTop *tt) {return (_currentEvaluationTreeTop = tt);}
@@ -778,8 +792,11 @@ public:
    // --------------------------------------------------------------------------
    // Binary encoding code cache
    //
-   uint32_t getEstimatedWarmLength()           {return _estimatedCodeLength;} // DEPRECATED
-   uint32_t setEstimatedWarmLength(uint32_t l) {return (_estimatedCodeLength = l);} // DEPRECATED
+   uint32_t getEstimatedWarmLength()           {return _estimatedWarmCodeLength;}
+   uint32_t setEstimatedWarmLength(uint32_t l) {return (_estimatedWarmCodeLength = l);}
+
+   uint32_t getEstimatedColdLength()           {return _estimatedColdCodeLength;}
+   uint32_t setEstimatedColdLength(uint32_t l) {return (_estimatedColdCodeLength = l);}
 
    uint32_t getEstimatedCodeLength()           {return _estimatedCodeLength;}
    uint32_t setEstimatedCodeLength(uint32_t l) {return (_estimatedCodeLength = l);}
@@ -790,6 +807,14 @@ public:
    uint8_t *getCodeStart();
    uint8_t *getCodeEnd()                  {return _binaryBufferCursor;}
    uint32_t getCodeLength();
+
+   uint8_t *getWarmCodeEnd()              {return _coldCodeStart ? _warmCodeEnd : _binaryBufferCursor;}
+   uint8_t *setWarmCodeEnd(uint8_t *c)    {return (_warmCodeEnd = c);}
+   uint8_t *getColdCodeStart()            {return _coldCodeStart;}
+   uint8_t *setColdCodeStart(uint8_t *c)  {return (_coldCodeStart = c);}
+
+   uint32_t getWarmCodeLength() {return (uint32_t)(getWarmCodeEnd() - getCodeStart());} // cast explicitly
+   uint32_t getColdCodeLength() {return (uint32_t)(_coldCodeStart ? getCodeEnd() - getColdCodeStart() : 0);} // cast explicitly
 
    uint8_t *getBinaryBufferCursor() {return _binaryBufferCursor;}
    uint8_t *setBinaryBufferCursor(uint8_t *b) { return (_binaryBufferCursor = b); }
@@ -1255,6 +1280,45 @@ public:
    TR::list<TR::Snippet*> *getMethodSnippetsToBePatchedOnClassUnload() { return &_methodSnippetsToBePatchedOnClassUnload; }
 
    TR::list<TR::Snippet*> *getSnippetsToBePatchedOnClassRedefinition() { return &_snippetsToBePatchedOnClassRedefinition; }
+
+   /**
+   * \brief Calculates total size of all code snippets
+   *
+   * \return total size of all code snippets
+   */
+   uint32_t getCodeSnippetsSize();
+
+   /**
+   * \brief Calculates total size of all data snippets
+   *
+   * \return total size of all data snippets
+   */
+   uint32_t getDataSnippetsSize() { return 0; }
+
+   /**
+   * \brief Calculates total size of all out of line code
+   *
+   * \return total size of all out of line code
+   */
+   uint32_t getOutOfLineCodeSize() { return 0; }
+
+   struct MethodStats
+      {
+      uint32_t codeSize;
+      uint32_t warmBlocks;
+      uint32_t coldBlocks;
+      uint32_t prologue;
+      uint32_t snippets;
+      uint32_t outOfLine;
+      uint32_t unaccounted;
+      uint32_t blocksInColdCache;
+      uint32_t overestimateInColdCache;
+      };
+
+   /**
+   * \brief Fills in MethodStats structure with footprint data
+   */
+   void getMethodStats(MethodStats &methodStats);
 
    // --------------------------------------------------------------------------
    // Register pressure
@@ -1779,6 +1843,27 @@ public:
    void incOutOfLineColdPathNestedDepth(){_outOfLineColdPathNestedDepth++;}
    void decOutOfLineColdPathNestedDepth(){_outOfLineColdPathNestedDepth--;}
 
+   /**
+    * @brief checks if instruction selection is in the state of generating
+    *        instrucions for warm blocks in the case of warm and cold block splitting
+    *
+    * @return true if instruction selection is in the state of generating
+    *         instrucions for warm blocks and false otherwise
+    */
+   bool getInstructionSelectionInWarmCodeCache() {return _flags2.testAny(InstructionSelectionInWarmCodeCache);}
+
+   /**
+    * @brief sets the state of the instruction selection to generating warm blocks
+    *        in the case of warm and cold block splitting
+    */
+   void setInstructionSelectionInWarmCodeCache() {_flags2.set(InstructionSelectionInWarmCodeCache);}
+
+   /**
+    * @brief sets the state of the instruction selection to generating cold blocks
+    *        in the case of warm and cold block splitting
+    */
+   void resetInstructionSelectionInWarmCodeCache() {_flags2.reset(InstructionSelectionInWarmCodeCache);}
+
    bool getMethodModifiedByRA() {return _flags2.testAny(MethodModifiedByRA);}
    void setMethodModifiedByRA() {_flags2.set(MethodModifiedByRA);}
    void resetMethodModifiedByRA() {_flags2.reset(MethodModifiedByRA);}
@@ -1867,7 +1952,7 @@ public:
       // AVAILABLE                                        = 0x00400000,
       SupportsLoweringConstLDivPower2                     = 0x00800000,
       DisableFloatingPointGRA                             = 0x01000000,
-      // AVAILABLE                                        = 0x02000000,
+      InstructionSelectionInWarmCodeCache                = 0x02000000,
       MethodModifiedByRA                                  = 0x04000000,
       // AVAILABLE                                        = 0x08000000,
       // AVAILABLE                                        = 0x10000000,
@@ -2022,6 +2107,8 @@ public:
 
    uint32_t _largestOutgoingArgSize;
 
+   uint32_t _estimatedWarmCodeLength;
+   uint32_t _estimatedColdCodeLength;
    uint32_t _estimatedCodeLength;
    int32_t _estimatedSnippetStart;
    int32_t _accumulatedInstructionLengthError;
@@ -2041,6 +2128,7 @@ public:
 
    TR::Instruction *_firstInstruction;
    TR::Instruction *_appendInstruction;
+   TR::Instruction *_lastWarmInstruction;
 
    TR_RegisterMask _liveRealRegisters[NumRegisterKinds];
    TR_GlobalRegisterNumber _lastGlobalGPR;
@@ -2058,6 +2146,9 @@ public:
    uint8_t _globalGPRPartitionLimit;
    uint8_t _globalFPRPartitionLimit;
    flags16_t _enabledFlags;
+
+   uint8_t *_warmCodeEnd;
+   uint8_t *_coldCodeStart;
 
    public:
 
@@ -2113,5 +2204,7 @@ public:
    };
 
 }
+
+#define SPLIT_WARM_COLD_STRING  "SPLIT WARM AND COLD BLOCKS:"
 
 #endif

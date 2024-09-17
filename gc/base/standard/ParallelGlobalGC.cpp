@@ -1718,7 +1718,7 @@ MM_ParallelGlobalGC::reportGCIncrementStart(MM_EnvironmentBase *env)
 	stats->_startTime = omrtime_hires_clock();
 
 	intptr_t rc = omrthread_get_process_times(&stats->_startProcessTimes);
-	switch (rc){
+	switch (rc) {
 	case -1: /* Error: Function un-implemented on architecture */
 	case -2: /* Error: getrusage() or GetProcessTimes() returned error value */
 		stats->_startProcessTimes._userTime = I_64_MAX;
@@ -1744,9 +1744,9 @@ MM_ParallelGlobalGC::reportGCIncrementEnd(MM_EnvironmentBase *env)
 	OMRPORT_ACCESS_FROM_ENVIRONMENT(env);
 	MM_CollectionStatisticsStandard *stats = (MM_CollectionStatisticsStandard *)env->_cycleState->_collectionStatistics;
 	stats->collectCollectionStatistics(env, stats);
-	
+
 	intptr_t rc = omrthread_get_process_times(&stats->_endProcessTimes);
-	switch (rc){
+	switch (rc) {
 	case -1: /* Error: Function un-implemented on architecture */
 	case -2: /* Error: getrusage() or GetProcessTimes() returned error value */
 		stats->_endProcessTimes._userTime = 0;

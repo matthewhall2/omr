@@ -89,7 +89,7 @@ enum TR_CompilationOptions
    TR_ReportMethodExit           = 0x00000100,
    TR_EntryBreakPoints           = 0x00000200,
    TR_EnableOldEDO               = 0x00000400,
-   // Available                  = 0x00000800,
+   TR_InstallAOTToColdCode       = 0x00000800,
    TR_RegisterMaps               = 0x00001000,
    TR_CreatePCMaps               = 0x00002000,
    TR_AggressiveInlining         = 0x00004000,
@@ -311,9 +311,9 @@ enum TR_CompilationOptions
    TR_DisableCHOpts                       = 0x00040000 + 7,
    TR_ForceLoadAOT                        = 0x00080000 + 7,
    TR_TraceRelocatableDataCG              = 0x00100000 + 7,
-   // Available                           = 0x00200000 + 7,
+   TR_Disable8BitPrimitiveArrayCopyInlineSmallSizeWithoutREPMOVS = 0x00200000 + 7,
    TR_TraceRelocatableDataDetailsCG       = 0x00400000 + 7,
-   // Available                           = 0x00800000 + 7,
+   TR_Disable16BitPrimitiveArrayCopyInlineSmallSizeWithoutREPMOVS = 0x00800000 + 7,
    TR_TurnOffSelectiveNoOptServerIfNoStartupHint = 0x01000000 + 7,
    TR_TraceDominators                     = 0x02000000 + 7,
    TR_EnableHCR                           = 0x04000000 + 7, // enable hot code replacement
@@ -344,20 +344,20 @@ enum TR_CompilationOptions
    TR_DisablePeephole                     = 0x00200000 + 8,
    TR_NoOptServer                         = 0x00400000 + 8,
    TR_DisableDLTrecompilationPrevention   = 0x00800000 + 8,
-   // Available                           = 0x01000000 + 8,
+   TR_Disable32BitPrimitiveArrayCopyInlineSmallSizeWithoutREPMOVS = 0x01000000 + 8,
    TR_DisablePeekAOTResolutions           = 0x02000000 + 8,
    TR_UseFlattenedArrayElementRuntimeHelpers = 0x04000000 + 8,
    TR_UseFlattenedFieldRuntimeHelpers     = 0x08000000 + 8,
    TR_DisableLiveRangeSplitter            = 0x10000000 + 8,
    TR_DisableHalfSlotSpills               = 0x20000000 + 8,
    TR_DisableMHInlineWithoutPeeking       = 0x40000000 + 8,
-   // Available                           = 0x80000000 + 8,
+   TR_Disable64BitPrimitiveArrayCopyInlineSmallSizeWithoutREPMOVS = 0x80000000 + 8,
 
 
    // Option word 9
    //
-   // Available                           = 0x00000020 + 9,
-   // Available                           = 0x00000040 + 9,
+   TR_SplitWarmAndColdBlocks              = 0x00000020 + 9,
+   TR_DisableReferenceArrayCopyInlineSmallSizeWithoutREPMOVS = 0x00000040 + 9,
    TR_DisableTLHPrefetch                  = 0x00000080 + 9,
    TR_DisableJProfilerThread              = 0x00000100 + 9,
    TR_DisableIProfilerThread              = 0x00000200 + 9,
@@ -380,19 +380,19 @@ enum TR_CompilationOptions
    TR_DisableNoServerDuringStartup        = 0x04000000 + 9,  // set TR_NoOptServer during startup and insert GCR trees
    TR_BreakOnNew                          = 0x08000000 + 9,
    TR_DisableInliningUnrecognizedIntrinsics = 0x10000000 + 9,
-   // Available                           = 0x20000000 + 9,
-   // Available                           = 0x40000000 + 9,
-   // Available                           = 0x80000000 + 9,
+   TR_EnableVectorAPIExpansion            = 0x20000000 + 9,
+   TR_MoveOOLInstructionsToWarmCode       = 0x40000000 + 9,
+   TR_MoveSnippetsToWarmCode              = 0x80000000 + 9,
 
    // Option word 10
    //
-   // Available                           = 0x00000020 + 10,
-   // Available                           = 0x00000040 + 10,
-   // Available                           = 0x00000080 + 10,
+   TR_DisableDataCacheDisclaiming         = 0x00000020 + 10,
+   TR_DisableIProfilerDataDisclaiming     = 0x00000040 + 10,
+   TR_DisclaimMemoryOnSwap                = 0x00000080 + 10,
    TR_FirstLevelProfiling                 = 0x00000100 + 10,
-   // Available                           = 0x00000200 + 10,
+   TR_EnableCodeCacheDisclaiming          = 0x00000200 + 10,
    // Available                           = 0x00000400 + 10,
-   // Available                           = 0x00000800 + 10,
+   TR_EnableCodeCacheDisclaimingSupport   = 0x00000800 + 10,
    // Available                           = 0x00001000 + 10,
    TR_DisableNewMethodOverride            = 0x00002000 + 10,
    // Available                           = 0x00004000 + 10,
@@ -401,7 +401,7 @@ enum TR_CompilationOptions
    TR_EnableSequentialLoadStoreWarm       = 0x00020000 + 10,
    TR_EnableSequentialLoadStoreCold       = 0x00040000 + 10,
    // Available                           = 0x00080000 + 10,
-   TR_EnableNewX86PrefetchTLH             = 0x00100000 + 10,
+   // Available                           = 0x00100000 + 10,
    // Available                           = 0x00200000 + 10,
    TR_ConservativeCompilation             = 0x00400000 + 10,
    // Available                           = 0x00800000 + 10,
@@ -1072,6 +1072,8 @@ enum TR_VerboseFlags
    TR_VerboseIProfilerPersistence,
    TR_VerboseCheckpointRestore,
    TR_VerboseCheckpointRestoreDetails,
+   TR_VerboseRSSReport,
+   TR_VerboseRSSReportDetailed,
    //If adding new options add an entry to _verboseOptionNames as well
    TR_NumVerboseOptions        // Must be the last one;
    };
@@ -1403,6 +1405,7 @@ public:
       _classesWithFolableFinalFields = NULL;
       _disabledIdiomPatterns = NULL;
       _suppressEA = NULL;
+      _dontFoldStaticFinalFields = NULL;
       _gcCardSize = 0;
       _heapBase = 0;
       _heapTop = 0;
@@ -1492,6 +1495,11 @@ public:
       _edoRecompSizeThreshold = 0;
       _edoRecompSizeThresholdInStartupMode = 0;
       _catchBlockCounterThreshold = 0;
+      _arraycopyRepMovsByteArrayThreshold = 32;
+      _arraycopyRepMovsCharArrayThreshold = 32;
+      _arraycopyRepMovsIntArrayThreshold = 32;
+      _arraycopyRepMovsLongArrayThreshold = 32;
+      _arraycopyRepMovsReferenceArrayThreshold = 32;
 
       memset(_options, 0, sizeof(_options));
       memset(_disabledOptimizations, false, sizeof(_disabledOptimizations));
@@ -1723,6 +1731,7 @@ public:
    TR::SimpleRegex * getClassesWithFoldableFinalFields(){return _classesWithFolableFinalFields;}
    TR::SimpleRegex * getDisabledIdiomPatterns()        {return _disabledIdiomPatterns;}
    TR::SimpleRegex * getSuppressEARegex()              {return _suppressEA;}
+   TR::SimpleRegex * getDontFoldStaticFinalFields()    {return _dontFoldStaticFinalFields;}
 
    char* getInduceOSR()                               {return _induceOSR;}
    int32_t getBigCalleeThreshold() const              {return _bigCalleeThreshold;}
@@ -1834,6 +1843,12 @@ public:
    int32_t getEdoRecompSizeThreshold() { return _edoRecompSizeThreshold; }
    int32_t getEdoRecompSizeThresholdInStartupMode() { return _edoRecompSizeThresholdInStartupMode; }
    int32_t getCatchBlockCounterThreshold() { return _catchBlockCounterThreshold; }
+
+   int32_t getArraycopyRepMovsByteArrayThreshold() { return _arraycopyRepMovsByteArrayThreshold; }
+   int32_t getArraycopyRepMovsCharArrayThreshold() { return _arraycopyRepMovsCharArrayThreshold; }
+   int32_t getArraycopyRepMovsIntArrayThreshold() { return _arraycopyRepMovsIntArrayThreshold; }
+   int32_t getArraycopyRepMovsLongArrayThreshold() { return _arraycopyRepMovsLongArrayThreshold; }
+   int32_t getArraycopyRepMovsReferenceArrayThreshold() { return _arraycopyRepMovsReferenceArrayThreshold; }
 
 
 public:
@@ -2388,6 +2403,7 @@ protected:
    TR::SimpleRegex *            _classesWithFolableFinalFields;
    TR::SimpleRegex *            _disabledIdiomPatterns;
    TR::SimpleRegex *            _suppressEA;
+   TR::SimpleRegex *            _dontFoldStaticFinalFields;
    uintptr_t                   _gcCardSize;
    uintptr_t                   _heapBase;
    uintptr_t                   _heapTop;
@@ -2514,6 +2530,13 @@ protected:
    int32_t                     _edoRecompSizeThreshold; // Size threshold (in nodes) for candidates to recompilation through EDO
    int32_t                     _edoRecompSizeThresholdInStartupMode; // Size threshold (in nodes) for candidates to recompilation through EDO during startup
    int32_t                     _catchBlockCounterThreshold; // Counter threshold for catch blocks to trigger more aggresive inlining on the throw path
+
+   int32_t                     _arraycopyRepMovsByteArrayThreshold; // Byte array copy threshold for using REP MOVS instructions. Only supports 32 or 64 bytes
+   int32_t                     _arraycopyRepMovsCharArrayThreshold; // Char array copy threshold for using REP MOVS instructions. Only supports 32 or 64 bytes
+   int32_t                     _arraycopyRepMovsIntArrayThreshold; //  Int array copy threshold for using REP MOVS instructions. Only supports 32, 64, or 128 bytes
+   int32_t                     _arraycopyRepMovsLongArrayThreshold; // Long array copy threshold for using REP MOVS instructions. Only supports 32, 64, or 128 bytes
+   int32_t                     _arraycopyRepMovsReferenceArrayThreshold; // Reference array copy threshold for using REP MOVS instructions. Only supports 32, 64, or 128 bytes
+
    }; // TR::Options
 
 }

@@ -286,6 +286,7 @@ OMR::Compilation::Compilation(
    _gpuPtxCount(0),
    _bitVectorPool(self()),
    _typeLayoutMap((LayoutComparator()), LayoutAllocator(self()->region())),
+   _currentILGenCallTarget(NULL),
    _tlsManager(*self())
    {
    if (target != NULL)
@@ -2730,4 +2731,26 @@ TR::list<TR::Snippet*> *
 OMR::Compilation::getSnippetsToBePatchedOnClassRedefinition()
    {
    return self()->cg()->getSnippetsToBePatchedOnClassRedefinition();
+   }
+
+TR::Block *
+OMR::Compilation::insertNewFirstBlock()
+   {
+   TR::Node *oldBBStart = self()->getStartTree()->getNode();
+   TR::Block *oldFirstBlock = self()->getStartTree()->getNode()->getBlock();
+   TR::Node *glRegDeps=NULL;
+   if (oldBBStart->getNumChildren() == 1)
+      glRegDeps = oldBBStart->getChild(0);
+
+   TR::CFG *cfg = self()->getFlowGraph();
+   TR::Block *newFirstBlock = TR::Block::createEmptyBlock(oldBBStart, self(), oldFirstBlock->getFrequency());
+
+   newFirstBlock->takeGlRegDeps(self(), glRegDeps);
+   cfg->addNode(newFirstBlock, (TR_RegionStructure *)cfg->getStructure());
+   cfg->join(newFirstBlock, oldFirstBlock);
+   cfg->addEdge(cfg->getStart(), newFirstBlock);
+   cfg->removeEdge(cfg->getStart(), oldFirstBlock);
+   self()->setStartTree(newFirstBlock->getEntry());
+
+   return newFirstBlock;
    }

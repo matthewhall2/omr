@@ -36,6 +36,7 @@
 #include "codegen/RegisterDependency.hpp"
 #include "codegen/RegisterPair.hpp"
 #include "codegen/TreeEvaluator.hpp"
+#include "z/codegen/OMRTreeEvaluator.hpp"
 #include "codegen/S390Evaluator.hpp"
 #include "compile/Compilation.hpp"
 #include "compile/Method.hpp"

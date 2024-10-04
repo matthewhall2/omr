@@ -601,11 +601,11 @@ OMR::Z::TreeEvaluator::fmaxEvaluator(TR::Node* node, TR::CodeGenerator* cg)
    if (cg->getSupportsVectorRegisters())
       {
       cg->generateDebugCounter("z13/simd/floatMax", 1, TR::DebugCounter::Free);
-      result = fpMinMaxVectorHelper(node, cg);
+      result = OMR::Z::TreeEvaluator::fpMinMaxVectorHelper(node, cg);
       }
    else
       {
-      result = xmaxxminhelper(node, cg);
+      result = OMR::Z::TreeEvaluator::xmaxxminhelper(node, cg);
       }
    generateRREInstruction(cg, TR::InstOpCode::LTEBR, node, result, result);
    return result;
@@ -618,11 +618,11 @@ OMR::Z::TreeEvaluator::dmaxEvaluator(TR::Node* node, TR::CodeGenerator* cg)
    if (cg->getSupportsVectorRegisters())
       {
       cg->generateDebugCounter("z13/simd/doubleMax", 1, TR::DebugCounter::Free);
-      result = fpMinMaxVectorHelper(node, cg);
+      result = OMR::Z::TreeEvaluator::fpMinMaxVectorHelper(node, cg);
       }
    else
       {
-      result = xmaxxminhelper(node, cg);
+      result = OMR::Z::TreeEvaluator::xmaxxminhelper(node, cg);
       }
    generateRREInstruction(cg, TR::InstOpCode::LTDBR, node, result, result);
    return result;
@@ -648,11 +648,11 @@ OMR::Z::TreeEvaluator::fminEvaluator(TR::Node* node, TR::CodeGenerator* cg)
    if (cg->getSupportsVectorRegisters())
       {
       cg->generateDebugCounter("z13/simd/floatMin", 1, TR::DebugCounter::Free);
-      result = fpMinMaxVectorHelper(node, cg);
+      result = OMR::Z::TreeEvaluator::fpMinMaxVectorHelper(node, cg);
       }
    else
       {
-      result = xmaxxminhelper(node, cg);
+      result = OMR::Z::TreeEvaluator::xmaxxminhelper(node, cg);
       }
    //generateRREInstruction(cg, TR::InstOpCode::LTEBR, node, result, result);
    return result;
@@ -665,11 +665,11 @@ OMR::Z::TreeEvaluator::dminEvaluator(TR::Node* node, TR::CodeGenerator* cg)
    if (cg->getSupportsVectorRegisters())
       {
       cg->generateDebugCounter("z13/simd/doubleMin", 1, TR::DebugCounter::Free);
-      result = fpMinMaxVectorHelper(node, cg);
+      result = OMR::Z::TreeEvaluator::fpMinMaxVectorHelper(node, cg);
       }
    else
       {
-      result = xmaxxminhelper(node, cg);
+      result = OMR::Z::TreeEvaluator::xmaxxminhelper(node, cg);
       }
    generateRREInstruction(cg, TR::InstOpCode::LTEBR, node, result, result);
    return result;

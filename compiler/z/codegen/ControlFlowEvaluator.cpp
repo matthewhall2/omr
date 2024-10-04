@@ -328,18 +328,15 @@ TR::Register *
 OMR::Z::TreeEvaluator::xmaxxminhelper(TR::Node * node, TR::CodeGenerator * cg)
    {
 
-   
-
-   TR::LabelSymbol* cFlowRegionStart = generateLabelSymbol(cg);
-
-   generateS390LabelInstruction(cg, TR::InstOpCode::label, node, cFlowRegionStart);
-   cFlowRegionStart->setStartInternalControlFlow();
-
    TR::Node * lhsNode = node->getChild(0);
    TR::Node * rhsNode = node->getChild(1);
 
    TR::Register * operand1 = cg->gprClobberEvaluate(lhsNode);
    TR::Register * operand2 = cg->evaluate(rhsNode);
+
+   TR::LabelSymbol* cFlowRegionStart = generateLabelSymbol(cg);
+   generateS390LabelInstruction(cg, TR::InstOpCode::label, node, cFlowRegionStart);
+   cFlowRegionStart->setStartInternalControlFlow();
 
    TR::InstOpCode::Mnemonic compareRROp = TR::InstOpCode::NOP;
    TR::InstOpCode::S390BranchCondition returnFirstArgCond = TR::InstOpCode::COND_NOP;
@@ -359,7 +356,6 @@ OMR::Z::TreeEvaluator::xmaxxminhelper(TR::Node * node, TR::CodeGenerator * cg)
    
    TR::LabelSymbol* cFlowRegionEnd = generateLabelSymbol(cg);
    TR::LabelSymbol* swap = generateLabelSymbol(cg);
-
    generateRREInstruction(cg, compareRROp, node, operand1, operand2);
    generateS390BranchInstruction(cg, TR::InstOpCode::BRC, returnFirstArgCond, node, cFlowRegionEnd);
    if (isFloatingPointOp)

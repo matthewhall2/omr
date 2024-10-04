@@ -533,7 +533,7 @@ imaximinHelper(TR::Node* node, TR::CodeGenerator* cg)
       }
    else
       {     
-      auto reg = xmaxxminhelper(node, cg);
+      auto reg = OMR::Z::TreeEvaluator::xmaxxminhelper(node, cg);
       return reg;
       }
    }
@@ -581,7 +581,7 @@ lmaxlminHelper(TR::Node* node, TR::CodeGenerator* cg)
       }
    else
       {
-      return xmaxxminhelper(node, cg);
+      return OMR::Z::TreeEvaluator::xmaxxminhelper(node, cg);
       }
    }
 

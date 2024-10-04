@@ -324,7 +324,8 @@ generateS390Compare(TR::Node * node, TR::CodeGenerator * cg, TR::InstOpCode::Mne
    return branchOpCond;
    }
 
-TR::Register * xmaxxminhelper(TR::Node * node, TR::CodeGenerator * cg)
+TR::Register * 
+OMR::Z::TreeEvaluator::xmaxxminhelper(TR::Node * node, TR::CodeGenerator * cg)
    {
    TR::LabelSymbol* cFlowRegionStart = generateLabelSymbol(cg);
    generateS390LabelInstruction(cg, TR::InstOpCode::label, node, cFlowRegionStart);
@@ -417,7 +418,8 @@ TR::Register * xmaxxminhelper(TR::Node * node, TR::CodeGenerator * cg)
    }
 
 
-TR::Register * fpMinMaxVectorHelper(TR::Node *node, TR::CodeGenerator *cg)
+TR::Register * 
+OMR::Z::TreeEvaluator::fpMinMaxVectorHelper(TR::Node *node, TR::CodeGenerator *cg)
    {
    TR_ASSERT(node->getNumChildren() >= 1  || node->getNumChildren() <= 2, "node has incorrect number of children");
    TR_ASSERT_FATAL(node->getOpCode().isFloatingPoint(), "invalid data type");

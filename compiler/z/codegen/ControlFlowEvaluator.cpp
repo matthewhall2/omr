@@ -357,7 +357,6 @@ OMR::Z::TreeEvaluator::xmaxxminHelper(TR::Node * node, TR::CodeGenerator * cg)
    TR::LabelSymbol* swapValues = generateLabelSymbol(cg);
    generateRREInstruction(cg, compareRROp, node, operand1, operand2);
    generateS390BranchInstruction(cg, TR::InstOpCode::BRC, returnFirstArgCond, node, cFlowRegionEnd);
-   generateS390BranchInstruction(cg, TR::InstOpCode::BRC, returnSecondArgCond, node, swapValues);
    if (isFloatingPointOp)
       {
       /*
@@ -367,6 +366,7 @@ OMR::Z::TreeEvaluator::xmaxxminHelper(TR::Node * node, TR::CodeGenerator * cg)
        * fall through for NaN case handling
        */
       TR::LabelSymbol* equalRegion = generateLabelSymbol(cg);
+      generateS390BranchInstruction(cg, TR::InstOpCode::BRC, returnSecondArgCond, node, swapValues);
       generateS390BranchInstruction(cg, TR::InstOpCode::BRC, TR::InstOpCode::COND_MASK8, node, equalRegion);
 
       // If first operand is NaN, then we are done, otherwise fallthrough to move second operand as result

@@ -336,24 +336,28 @@ OMR::Z::TreeEvaluator::xmaxxminHelper(TR::Node * node, TR::CodeGenerator * cg)
 
    TR::InstOpCode::Mnemonic compareRROp = TR::InstOpCode::NOP;
    TR::InstOpCode::S390BranchCondition returnFirstArgCond = TR::InstOpCode::COND_NOP;
+   TR::InstOpCode::S390BranchCondition returnSecondArgCond = TR::InstOpCode::COND_NOP;
    bool isMaxOp = node->getOpCode().isMax();
    bool isFloatingPointOp = node->getOpCode().isFloatingPoint();
    if (isFloatingPointOp)
       {
       compareRROp = node->getOpCode().isDouble() ? TR::InstOpCode::CDBR : TR::InstOpCode::CEBR;
       returnFirstArgCond = isMaxOp ? TR::InstOpCode::COND_MASK2 : TR::InstOpCode::COND_MASK4;
+      returnSecondArgCond = isMaxOp ? TR::InstOpCode::COND_MASK4 : TR::InstOpCode::COND_MASK2;
       }
    else
       {
       TR_ASSERT_FATAL(node->getOpCode().isInt() || node->getOpCode().isLong(), "invalid operand type");
       compareRROp = node->getOpCode().isLong() ? TR::InstOpCode::CGR : TR::InstOpCode::CR;
       returnFirstArgCond = isMaxOp ? TR::InstOpCode::COND_BHR : TR::InstOpCode::COND_BLR;
+      returnSecondArgCond = isMaxOp ? TR::InstOpCode::COND_BLR : TR::InstOpCode::COND_BHR;
       }
 
    TR::LabelSymbol* cFlowRegionEnd = generateLabelSymbol(cg);
    TR::LabelSymbol* swapValues = generateLabelSymbol(cg);
    generateRREInstruction(cg, compareRROp, node, operand1, operand2);
    generateS390BranchInstruction(cg, TR::InstOpCode::BRC, returnFirstArgCond, node, cFlowRegionEnd);
+   generateS390BranchInstruction(cg, TR::InstOpCode::BRC, returnSecondArgCond, node, swapValues);
    if (isFloatingPointOp)
       {
       /*

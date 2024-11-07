@@ -11156,6 +11156,7 @@ TR::Register *
 OMR::Z::TreeEvaluator::directCallEvaluator(TR::Node * node, TR::CodeGenerator * cg)
    {
    TR::Register *resultReg = NULL;
+      printf("in omr z treeEval directcalleval\n");
 
    if (!cg->inlineDirectCall(node, resultReg))
       {

@@ -1813,8 +1813,8 @@ OMR::SymbolReferenceTable::findOrCreatePendingPushTemporary(
    TR_ASSERT(!type.isBCD() || size,"binary coded decimal types must provide a size\n");
    bool osrEnabled = owningMethodSymbol->comp()->getOption(TR_EnableOSR);
    uint32_t slotNum = slot + TR::Symbol::convertTypeToNumberOfSlots(type) - 1;
-   TR_ASSERT_FATAL(!osrEnabled || slotNum < owningMethodSymbol->getNumuPPSlots(),
-      "cannot create a pending push temporary that exceeds the number of slots for this method:\nSlot: %d\nSlot Number: %d\nData Type: %d\nNumber of slots: %d\n", slot, slotNum, type, owningMethodSymbol->getNumuPPSlots());
+   TR_ASSERT_FATAL(!osrEnabled || slotNum < owningMethodSymbol->getNumPPSlots(),
+      "cannot create a pending push temporary that exceeds the number of slots for this method:\nSlot: %d\nSlot Number: %d\nData Type: %d\nNumber of slots: %d\n", slot, slotNum, type, owningMethodSymbol->getNumPPSlots());
 #endif
    TR::SymbolReference *tempSymRef = findOrCreateAutoSymbol(owningMethodSymbol, -(slot + 1), type, true, false, false, false, size);
    tempSymRef->getSymbol()->setIsPendingPush();

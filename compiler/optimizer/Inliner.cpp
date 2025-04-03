@@ -4763,8 +4763,18 @@ bool OMR_InlinerPolicy::tryToInlineTrivialMethod (TR_CallStack* callStack, TR_Ca
    return false;
    }
 
+bool TR_InlinerBase::trivialInliningOnly(
+   TR_CallStack *callStack, TR_CallTarget *callTarget)
+   {
+   return getPolicy()->trivialInliningOnly(callStack, callTarget);
+   }
+
+bool OMR_InlinerPolicy::trivialInliningOnly(TR_CallStack* callStack, TR_CallTarget* calltarget)
+   {
+   return false;
+   }
+
 //returns false when inlining fails
-//TODO: currently this method returns true in some cases when the inlining fails. This needs to be fixed
 bool TR_InlinerBase::inlineCallTarget2(TR_CallStack * callStack, TR_CallTarget *calltarget, TR::TreeTop** cursorTreeTop, bool inlinefromgraph, int32_t)
    {
    TR_InlinerDelimiter delimiter(tracer(),"inlineCallTarget2");
@@ -4789,8 +4799,24 @@ bool TR_InlinerBase::inlineCallTarget2(TR_CallStack * callStack, TR_CallTarget *
    if (tryToInlineTrivialMethod(callStack, calltarget))
       return true;
 
+   if (trivialInliningOnly(callStack, calltarget))
+      {
+      return false;
+      }
+
    if (comp()->getOption(TR_InlineNativeOnly))
       return false;
+
+   if (!performTransformation(
+         comp(),
+         "%sBegin inlining call target %p at call site %p\n",
+         OPT_DETAILS,
+         calltarget,
+         calltarget->_myCallSite))
+      {
+      return false;
+      }
+
    comp()->getFlowGraph()->setMaxFrequency(-1);
    comp()->getFlowGraph()->setMaxEdgeFrequency(-1);
 
@@ -4896,13 +4922,37 @@ bool TR_InlinerBase::inlineCallTarget2(TR_CallStack * callStack, TR_CallTarget *
          }
       }
 
-
    if (debug("inliningTrees"))
       {
       dumpOptDetails(comp(), "Inliner: trees for %s\n", calleeSymbol->signature(trMemory()));
       comp()->dumpMethodTrees("after ilGen while inlining", calleeSymbol);
       }
 
+   if (comp()->getOption(TR_FullSpeedDebug) && !getPolicy()->mustBeInlinedEvenInDebug(calleeSymbol->getResolvedMethod(), callNodeTreeTop) && (!comp()->getOption(TR_EnableOSR) || comp()->getOption(TR_MimicInterpreterFrameShape)))
+      {
+      TR::Node *decompPoint = findPotentialDecompilationPoint(calleeSymbol, comp());
+      if (decompPoint)
+         {
+         genILSucceeded = false;
+         if (comp()->trace(OMR::inlining))
+            {
+            tracer()->insertCounter(Decompilation_Point, callNodeTreeTop);
+
+            traceMsg(comp(), "FSD inlining: decompilation point %s (%s) prevented inlining of %s\n",
+                    comp()->getDebug()->getName(decompPoint->getOpCodeValue()),
+                    comp()->getDebug()->getName(decompPoint->getSymbolReference()),
+                    tracer()->traceSignature(calleeSymbol));
+            }
+         return false; // genIlSucceeded has already been checked above
+         }
+      }
+
+   // NOTE: From here on, inlining of this call target is guaranteed to succeed
+   // (unless the entire compilation fails first, e.g. due to the scratch space
+   // limit). Because nested call targets are inlined recursively only after
+   // this point, we can be sure that all transitive callers will be inlined
+   // successfully as well. That is, this target's code will be included in the
+   // trees by the end of inlining.
 
    // We have the trees now, we can check if each argument is invariant and clear the prex arg for the ones that are not
    getUtil()->clearArgInfoForNonInvariantArguments(calltarget, tracer());
@@ -4926,24 +4976,11 @@ bool TR_InlinerBase::inlineCallTarget2(TR_CallStack * callStack, TR_CallTarget *
 
    getUtil()->requestAdditionalOptimizations(calltarget);
 
-   if (comp()->getOption(TR_FullSpeedDebug) && !getPolicy()->mustBeInlinedEvenInDebug(calleeSymbol->getResolvedMethod(), callNodeTreeTop) && (!comp()->getOption(TR_EnableOSR) || comp()->getOption(TR_MimicInterpreterFrameShape)))
-      {
-      TR::Node *decompPoint = findPotentialDecompilationPoint(calleeSymbol, comp());
-      if (decompPoint)
-         {
-         genILSucceeded = false;
-         if (comp()->trace(OMR::inlining))
-            {
-            tracer()->insertCounter(Decompilation_Point, callNodeTreeTop);
-
-            traceMsg(comp(), "FSD inlining: decompilation point %s (%s) prevented inlining of %s\n",
-                    comp()->getDebug()->getName(decompPoint->getOpCodeValue()),
-                    comp()->getDebug()->getName(decompPoint->getSymbolReference()),
-                    tracer()->traceSignature(calleeSymbol));
-            }
-         return false; // genIlSucceeded has already been checked above
-         }
-      }
+   // NOTE: If for the purpose of TR_MimicInterpreterFrameShape we checked
+   // above for OSR points, then there weren't any. Otherwise, we'd have failed
+   // at that check. In particular, there were no calls, so the recursive
+   // inlining didn't inline anything, and there are still no OSR points, so
+   // it's OK to proceed.
 
    // If InnerPreexistence added inner assumptions on this method -- and this method is being inlined
    // as a non-virtual - add a dummy virtual guard around this
@@ -4986,17 +5023,17 @@ bool TR_InlinerBase::inlineCallTarget2(TR_CallStack * callStack, TR_CallTarget *
          }
       }
 
-
-   if (!performTransformation(comp(), "%sInlining qwerty %s into %s with a virtual guard kind=%s type=%s partialInline=%d\n",
-                              OPT_DETAILS, calleeSymbol->signature(trMemory()),
-                              callerSymbol->signature(trMemory()), tracer()->getGuardKindString(guard),
-                              tracer()->getGuardTypeString(guard),
-                              !comp()->getOption(TR_DisablePartialInlining) && calltarget->_partialInline
-                              ))
-
-      {
-      return true;
-      }
+   // Testarossa heritage preservation site: "Inlining qwerty"
+   dumpOptDetails(
+      comp(),
+      "%sInlining qwerty %p %s into %s with a virtual guard kind=%s type=%s partialInline=%d\n",
+      OPT_DETAILS,
+      calltarget,
+      calleeSymbol->signature(trMemory()),
+      callerSymbol->signature(trMemory()),
+      tracer()->getGuardKindString(guard),
+      tracer()->getGuardTypeString(guard),
+      !comp()->getOption(TR_DisablePartialInlining) && calltarget->_partialInline);
 
    comp()->incInlinedCalls();
 

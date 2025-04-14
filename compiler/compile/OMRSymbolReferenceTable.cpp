@@ -1811,6 +1811,7 @@ OMR::SymbolReferenceTable::findOrCreatePendingPushTemporary(
    {
 #ifdef J9_PROJECT_SPECIFIC
    TR_ASSERT(!type.isBCD() || size,"binary coded decimal types must provide a size\n");
+   TraceIL("Finding pending push temp slot\n");
    bool osrEnabled = owningMethodSymbol->comp()->getOption(TR_EnableOSR);
    uint32_t slotNum = slot + TR::Symbol::convertTypeToNumberOfSlots(type) - 1;
    TR_ASSERT_FATAL(!osrEnabled || slotNum < owningMethodSymbol->getNumPPSlots(),

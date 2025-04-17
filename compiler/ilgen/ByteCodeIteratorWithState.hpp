@@ -231,6 +231,7 @@ protected:
       if (queueTarget)
          _todoQueue.append(new (this->comp()->trStackMemory()) TodoIndex(index));
       genBBStart(index);
+      
       saveStack(index);
       return blocks(index)->getEntry();
       }
@@ -332,6 +333,7 @@ protected:
    /// return the top element of the operand stack and pop it off the operand stack
    OperandStackElementType pop()
       {
+      traceMsg(this->comp(), "Popping stack\n");
       return _stack->pop();
       }
 
@@ -344,6 +346,7 @@ protected:
    /// push the element onto the operand stack
    void push(OperandStackElementType n)
       {
+      traceMsg(this->comp(), "Pushing to stack\n");
       _stack->push(n);
       }
 

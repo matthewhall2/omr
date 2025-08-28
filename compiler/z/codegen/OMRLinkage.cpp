@@ -1583,7 +1583,7 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
 
     int8_t gprSize = self()->machine()->getGPRSize();
     TR::Register *tempRegister;
-    int32_t argIndex = 0, i, from, to, step, numChildren;
+    int32_t argIndex = 0, i, from, to, step, lastChildIndex;
     int32_t argSize = 0;
     int32_t stackOffset = 0;
     uint32_t numIntegerArgs = 0;
@@ -1623,9 +1623,9 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
         firstArgumentChild++;
     }
 
-    numChildren = callNode->getNumChildren() - 1;
-    if ((callNode->getNumChildren() >= 1) && (callNode->getChild(numChildren)->getOpCodeValue() == TR::GlRegDeps))
-        numChildren--;
+    lastChildIndex = callNode->getNumChildren() - 1;
+    if ((callNode->getNumChildren() >= 1) && (callNode->getChild(lastChildIndex)->getOpCodeValue() == TR::GlRegDeps))
+        lastChildIndex--;
 
     // setup helper routine arguments in reverse order
     bool rightToLeft = self()->isParmsInReverseOrder() &&
@@ -1636,13 +1636,16 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
             callNode->getSymbolReference(),
             TR::SymbolReferenceTable::jitDispatchJ9MethodSymbol);
     rightToLeft &= !isJITDispatchJ9Method;
+    if (isJITDispatchJ9Method) {
+        firstArgumentChild += 1;
+    }
     if (rightToLeft) {
-        from = numChildren;
+        from = lastChildIndex;
         to = firstArgumentChild;
         step = -1;
     } else {
         from = firstArgumentChild;
-        to = numChildren;
+        to = lastChildIndex;
         step = 1;
     }
 

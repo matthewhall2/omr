@@ -1631,6 +1631,11 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
     bool rightToLeft = self()->isParmsInReverseOrder() &&
         // we want the arguments for induceOSR to be passed from left to right as in any other non-helper call
         !callNode->getSymbolReference()->isOSRInductionHelper();
+    bool isJITDispatchJ9Method = callNode->getOpCode().isCallDirect()
+      && comp()->getSymRefTab()->isNonHelper(
+            callNode->getSymbolReference(),
+            TR::SymbolReferenceTable::jitDispatchJ9MethodSymbol);
+    rightToLeft &= !isJITDispatchJ9Method;
     if (rightToLeft) {
         from = numChildren;
         to = firstArgumentChild;

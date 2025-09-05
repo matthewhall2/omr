@@ -1687,7 +1687,12 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
                         &stackOffset, dependencies);
                     numIntegerArgs++;
                     break;
-                }
+                // } else if (isJITDispatchJ9Method) {
+                //     argRegister
+                //     = self()->pushArg(callNode, child, numIntegerArgs, numFloatArgs, &stackOffset, dependencies);
+                // numIntegerArgs++;
+                // break;
+                // }
             case TR::Int8:
             case TR::Int16:
             case TR::Int32:

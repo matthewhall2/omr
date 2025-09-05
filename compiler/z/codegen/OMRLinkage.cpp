@@ -1594,11 +1594,17 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
     uint32_t firstArgumentChild = callNode->getFirstArgumentIndex();
     TR::DataType resType = callNode->getType();
     TR::DataType resDataType = resType.getDataType();
+    bool isJITDispatchJ9Method = callNode->isJitDispatchJ9MethodCall(comp());
 
     const bool enableVectorLinkage = self()->cg()->getSupportsVectorRegisters();
 
     // Not kill special registers
     self()->doNotKillSpecialRegsForBuildArgs(self(), isFastJNI, killMask);
+
+    if (isJITDispatchJ9Method) {
+        firstArgumentChild += 1;
+        i = 1;
+    }
 
     // For the generated classObject argument, we didn't use them in the dispatch sequence.
     // Simply evaluating them would be enough. Care must be taken when we begin to use them,
@@ -1627,7 +1633,6 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
     if ((callNode->getNumChildren() >= 1) && (callNode->getChild(lastChildIndex)->getOpCodeValue() == TR::GlRegDeps))
         lastChildIndex--;
 
-    bool isJITDispatchJ9Method = callNode->isJitDispatchJ9MethodCall(comp());
     // setup helper routine arguments in reverse order
     bool rightToLeft = self()->isParmsInReverseOrder() &&
         // we want the arguments for induceOSR to be passed from left to right as in any other non-helper call
@@ -1635,9 +1640,7 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
         // <jitDispatchJ9Method> receives args in the same order as the target
         !isJITDispatchJ9Method;
 
-    if (isJITDispatchJ9Method) {
-        firstArgumentChild += 1;
-    }
+    
     if (rightToLeft) {
         from = lastChildIndex;
         to = firstArgumentChild;

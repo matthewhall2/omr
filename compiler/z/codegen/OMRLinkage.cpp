@@ -1601,10 +1601,10 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
     // Not kill special registers
     self()->doNotKillSpecialRegsForBuildArgs(self(), isFastJNI, killMask);
 
-    if (isJITDispatchJ9Method) {
-        firstArgumentChild += 1;
-        i = 1;
-    }
+    // if (isJITDispatchJ9Method) {
+    //     firstArgumentChild += 1;
+    //     i = 1;
+    // }
 
     // For the generated classObject argument, we didn't use them in the dispatch sequence.
     // Simply evaluating them would be enough. Care must be taken when we begin to use them,

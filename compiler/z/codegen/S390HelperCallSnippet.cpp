@@ -60,6 +60,8 @@ uint8_t *TR::S390HelperCallSnippet::emitSnippetBody()
         cursor = TR::S390CallSnippet::S390flushArgumentsToStack(cursor, callNode, getSizeOfArguments(), cg());
     }
 
+   
+
     uint32_t rEP = (uint32_t)cg()->getEntryPointRegister() - 1;
 
     // load vm thread into gpr13

@@ -62,6 +62,8 @@ uint8_t *TR::S390HelperCallSnippet::emitSnippetBody()
     }
     if (isJitDispatchJ9Method) {
     generateRRInstruction(cg(), TR::InstOpCode::getLoadOpCode(), callNode, cg()->machine()->getRealRegister(TR::RealRegister::GPR1), callNode->getChild(0)->getRegister());
+    generateRIInstruction(cg(), TR::InstOpCode::getLoadOpCode(), callNode, cg()->machine()->getRealRegister(TR::RealRegister::GPR1), 25);
+
     }
 
    

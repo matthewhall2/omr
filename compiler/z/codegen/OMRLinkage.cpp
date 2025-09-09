@@ -1600,7 +1600,9 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
 
     // Not kill special registers
     self()->doNotKillSpecialRegsForBuildArgs(self(), isFastJNI, killMask);
+    if (isJITDispatchJ9Method) {
     killMask &= ~(0x1L << getJ9MethodArgumentRegister());
+    }
 
     // if (isJITDispatchJ9Method) {
     //     firstArgumentChild += 1;

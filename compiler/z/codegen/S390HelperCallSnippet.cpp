@@ -63,12 +63,14 @@ uint8_t *TR::S390HelperCallSnippet::emitSnippetBody()
     if (isJitDispatchJ9Method) {
     generateRRInstruction(cg(), TR::InstOpCode::getLoadOpCode(), callNode, cg()->machine()->getRealRegister(TR::RealRegister::GPR1), callNode->getChild(0)->getRegister());
     generateRIInstruction(cg(), TR::InstOpCode::getLoadOpCode(), callNode, cg()->machine()->getRealRegister(TR::RealRegister::GPR1), 25);
-
+    TR::RealRegister *ep = cg()->machine()->getRealRegister(cg()->getEntryPointRegister());
+    generateRIInstruction(cg(), TR::InstOpCode::getLoadOpCode(), callNode, ep, 25);
     }
 
    
 
     uint32_t rEP = (uint32_t)cg()->getEntryPointRegister() - 1;
+
 
     // load vm thread into gpr13
     cursor = generateLoadVMThreadInstruction(cg(), cursor);

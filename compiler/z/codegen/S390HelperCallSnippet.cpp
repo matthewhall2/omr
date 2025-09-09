@@ -41,6 +41,7 @@
 #include "runtime/CodeCacheManager.hpp"
 #include "runtime/Runtime.hpp"
 #include "z/codegen/CallSnippet.hpp"
+#include "z/codegen/S390GenerateInstructions.hpp"
 
 namespace TR {
 class Node;
@@ -58,6 +59,9 @@ uint8_t *TR::S390HelperCallSnippet::emitSnippetBody()
     if (jitInduceOSR || isJitDispatchJ9Method) {
         // Flush in-register arguments back to the stack for interpreter
         cursor = TR::S390CallSnippet::S390flushArgumentsToStack(cursor, callNode, getSizeOfArguments(), cg());
+    }
+    if (isJitDispatchJ9Method) {
+    generateRRInstruction(cg(), TR::InstOpCode::getLoadOpCode(), callNode, cg()->machine()->getRealRegister(TR::RealRegister::GPR1), callNode->getChild(0)->getRegister());
     }
 
    
@@ -110,7 +114,6 @@ uint8_t *TR::S390HelperCallSnippet::emitSnippetBody()
     // If MCC is supported, we will look up the appropriate trampoline, if
     //     necessary.
     intptr_t destAddr = (intptr_t)(helperSymRef->getSymbol()->castToMethodSymbol()->getMethodAddress());
-
 #if defined(TR_TARGET_64BIT)
 #if defined(J9ZOS390)
     if (cg()->comp()->getOption(TR_EnableRMODE64))

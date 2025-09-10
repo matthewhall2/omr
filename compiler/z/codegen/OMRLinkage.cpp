@@ -1622,7 +1622,11 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
     }
 
     // Skip the first receiver argument if instructed.
+
     if (!PassReceiver) {
+          if (isJITDispatchJ9Method) {
+        TR_ASSERT_FATAL(false, "no passReceiver for jitDispatchJ9Method");
+    }
         // Force evaluation of child if necessary
         TR::Node *receiverChild = callNode->getChild(firstArgumentChild);
         if (receiverChild->getReferenceCount() > 1) {

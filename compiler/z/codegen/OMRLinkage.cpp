@@ -1612,6 +1612,9 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
     // For the generated classObject argument, we didn't use them in the dispatch sequence.
     // Simply evaluating them would be enough. Care must be taken when we begin to use them,
     // in order not to spill in the dispatch sequence.
+    if (isJITDispatchJ9Method) {
+        TR_ASSERT_FATAL(firstArgumentChild = 0, "Expected firstArgumentChild to be 0 for jitDispatchJ9Method");
+    }
     for (i = 0; i < firstArgumentChild; i++) {
         TR::Node *child = callNode->getChild(i);
         vftReg = self()->cg()->evaluate(child);

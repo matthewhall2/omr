@@ -61,10 +61,10 @@ uint8_t *TR::S390HelperCallSnippet::emitSnippetBody()
         cursor = TR::S390CallSnippet::S390flushArgumentsToStack(cursor, callNode, getSizeOfArguments(), cg());
     }
     if (isJitDispatchJ9Method) {
-    generateRRInstruction(cg(), TR::InstOpCode::getLoadOpCode(), callNode, cg()->machine()->getRealRegister(TR::RealRegister::GPR1), callNode->getChild(0)->getRegister());
-    generateRIInstruction(cg(), TR::InstOpCode::getLoadOpCode(), callNode, cg()->machine()->getRealRegister(TR::RealRegister::GPR1), 25);
-    TR::RealRegister *ep = cg()->machine()->getRealRegister(cg()->getEntryPointRegister());
-    generateRIInstruction(cg(), TR::InstOpCode::getLoadOpCode(), callNode, ep, 25);
+    // generateRRInstruction(cg(), TR::InstOpCode::getLoadOpCode(), callNode, cg()->machine()->getRealRegister(TR::RealRegister::GPR1), callNode->getChild(0)->getRegister());
+    // generateRIInstruction(cg(), TR::InstOpCode::getLoadOpCode(), callNode, cg()->machine()->getRealRegister(TR::RealRegister::GPR1), 25);
+    // TR::RealRegister *ep = cg()->machine()->getRealRegister(cg()->getEntryPointRegister());
+    // generateRIInstruction(cg(), TR::InstOpCode::getLoadOpCode(), callNode, ep, 25);
     }
 
    

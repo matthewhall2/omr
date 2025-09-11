@@ -1594,7 +1594,6 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
     uint32_t firstArgumentChild = callNode->getFirstArgumentIndex();
     TR::DataType resType = callNode->getType();
     TR::DataType resDataType = resType.getDataType();
-    bool isJITDispatchJ9Method = callNode->isJitDispatchJ9MethodCall(comp());
 
     const bool enableVectorLinkage = self()->cg()->getSupportsVectorRegisters();
 
@@ -1700,11 +1699,6 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
                         &stackOffset, dependencies);
                     numIntegerArgs++;
                     break;
-                // } else if (isJITDispatchJ9Method) {
-                //     printf("jit dispatch j9 build args\n");
-                //     argRegister = self()->pushArg(callNode, child, numIntegerArgs, numFloatArgs, &stackOffset, dependencies);
-                //     numIntegerArgs++;
-                //     break;
                  }
             case TR::Int8:
             case TR::Int16:

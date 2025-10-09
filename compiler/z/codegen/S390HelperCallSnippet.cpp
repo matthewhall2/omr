@@ -48,6 +48,7 @@ class Node;
 
 uint8_t *TR::S390HelperCallSnippet::emitSnippetBody()
 {
+    traceMsg(cg()->comp(), "S390HelperCalSnippet: emitting helper snippet body\n");
     uint8_t *cursor = cg()->getBinaryBufferCursor();
     getSnippetLabel()->setCodeLocation(cursor);
 
@@ -132,9 +133,10 @@ uint8_t *TR::S390HelperCallSnippet::emitSnippetBody()
     this->setSnippetDestAddr(destAddr);
 
     *(int32_t *)cursor = (int32_t)((destAddr - branchInstructionStartAddress) / 2);
-
+    traceMsg(cg()->comp(), "S390HelperCalSnippet: Adding relocation\n");
     cg()->addProjectSpecializedRelocation(cursor, (uint8_t *)helperSymRef, NULL, TR_HelperAddress, __FILE__, __LINE__,
         getNode());
+    traceMsg(cg()->comp(), "S390HelperCalSnippet: Relocation added successfully\n");
     cursor += sizeof(int32_t);
 
     gcMap().registerStackMap(cursor, cg());

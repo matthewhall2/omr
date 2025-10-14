@@ -302,7 +302,7 @@ public:
         int32_t *stackOffsetPtr, TR::RegisterDependencyConditions *dependencies, TR::Register *argRegister = NULL);
     TR::Register *pushVectorArg(TR::Node *callNode, TR::Node *child, int32_t numVectorArgs, int32_t pindex,
         int32_t *stackOffsetPtr, TR::RegisterDependencyConditions *dependencies, TR::Register *argRegister = NULL);
-    virtual void doNotKillSpecialRegsForBuildArgs(TR::Linkage *linkage, bool isFastJNI, int64_t &killMask);
+    virtual void doNotKillSpecialRegsForBuildArgs(TR::Linkage *linkage, bool isFastJNI, int64_t &killMask, TR::Node *callNode = NULL);
 
     virtual void addSpecialRegDepsForBuildArgs(TR::Node *callNode, TR::RegisterDependencyConditions *dependencies,
         int32_t &from, int32_t step)

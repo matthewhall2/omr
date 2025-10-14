@@ -1564,12 +1564,20 @@ void OMR::Z::Linkage::loadIntArgumentsFromStack(TR::Node *callNode, TR::Register
 /**
  * Do not kill special regs (java stack ptr, system stack ptr, and method metadata reg)
  */
-void OMR::Z::Linkage::doNotKillSpecialRegsForBuildArgs(TR::Linkage *linkage, bool isFastJNI, int64_t &killMask)
+void OMR::Z::Linkage::doNotKillSpecialRegsForBuildArgs(TR::Linkage *linkage, bool isFastJNI, int64_t &killMask, TR::Node *callNode)
 {
     int32_t i;
+    bool doNotKillJ9MethodArgReg = false;
     for (i = TR::RealRegister::FirstGPR; i <= TR::RealRegister::LastFPR; i++) {
+        if (REGNUM(i) == getJ9MethodArgumentRegister()) {
+            doNotKillJ9MethodArgReg = true;
+        }
         if (linkage->getPreserved(REGNUM(i)))
             killMask &= ~(0x1L << REGINDEX(i));
+    }
+
+    if (callNode != NULL && callNode->isJitDispatchJ9MethodCall(comp())) {
+    TR_ASSERT_FATAL(doNotKillJ9MethodArgReg, "should not kill this reg");
     }
 }
 
@@ -1598,12 +1606,14 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
     const bool enableVectorLinkage = self()->cg()->getSupportsVectorRegisters();
 
     // Not kill special registers
-    self()->doNotKillSpecialRegsForBuildArgs(self(), isFastJNI, killMask);
+    self()->doNotKillSpecialRegsForBuildArgs(self(), isFastJNI, killMask, callNode);
 
     // For the generated classObject argument, we didn't use them in the dispatch sequence.
     // Simply evaluating them would be enough. Care must be taken when we begin to use them,
     // in order not to spill in the dispatch sequence.
     for (i = 0; i < firstArgumentChild; i++) {
+        if (isJITDispatchJ9Method)
+            TR_ASSERT_FATAL(false, "No args before first child for jitDispatchJ9Method\n");
         TR::Node *child = callNode->getChild(i);
         vftReg = self()->cg()->evaluate(child);
         self()->cg()->decReferenceCount(child);
@@ -1611,6 +1621,8 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
 
     // Skip the first receiver argument if instructed.
     if (!PassReceiver) {
+        if (isJITDispatchJ9Method)
+            TR_ASSERT_FATAL(false, "Should not force eval of first child for jitDispatchJ9Method\n");
         // Force evaluation of child if necessary
         TR::Node *receiverChild = callNode->getChild(firstArgumentChild);
         if (receiverChild->getReferenceCount() > 1) {
@@ -1646,6 +1658,8 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
 
     // Add special argument register dependency
     self()->addSpecialRegDepsForBuildArgs(callNode, dependencies, from, step);
+    if (isJITDispatchJ9Method)
+        from += 1;
 
     for (i = from; (rightToLeft && i >= to) || (!rightToLeft && i <= to); i += step) {
         child = callNode->getChild(i);

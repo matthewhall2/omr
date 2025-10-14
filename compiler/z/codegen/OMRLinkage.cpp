@@ -1604,6 +1604,8 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
     // Simply evaluating them would be enough. Care must be taken when we begin to use them,
     // in order not to spill in the dispatch sequence.
     for (i = 0; i < firstArgumentChild; i++) {
+        if (isJITDispatchJ9Method)
+            TR_ASSERT_FATAL(false, "No args before first child for jitDispatchJ9Method\n");
         TR::Node *child = callNode->getChild(i);
         vftReg = self()->cg()->evaluate(child);
         self()->cg()->decReferenceCount(child);
@@ -1611,6 +1613,8 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
 
     // Skip the first receiver argument if instructed.
     if (!PassReceiver) {
+        if (isJITDispatchJ9Method)
+            TR_ASSERT_FATAL(false, "Should not force eval of first child for jitDispatchJ9Method\n");
         // Force evaluation of child if necessary
         TR::Node *receiverChild = callNode->getChild(firstArgumentChild);
         if (receiverChild->getReferenceCount() > 1) {

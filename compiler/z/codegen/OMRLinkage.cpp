@@ -1564,12 +1564,20 @@ void OMR::Z::Linkage::loadIntArgumentsFromStack(TR::Node *callNode, TR::Register
 /**
  * Do not kill special regs (java stack ptr, system stack ptr, and method metadata reg)
  */
-void OMR::Z::Linkage::doNotKillSpecialRegsForBuildArgs(TR::Linkage *linkage, bool isFastJNI, int64_t &killMask)
+void OMR::Z::Linkage::doNotKillSpecialRegsForBuildArgs(TR::Linkage *linkage, bool isFastJNI, int64_t &killMask, TR::Node *callNode)
 {
     int32_t i;
+    bool doNotKillJ9MethodArgReg = false;
     for (i = TR::RealRegister::FirstGPR; i <= TR::RealRegister::LastFPR; i++) {
+        if (REGNUM(i) == getJ9MethodArgumentRegister()) {
+            doNotKillJ9MethodArgReg = true;
+        }
         if (linkage->getPreserved(REGNUM(i)))
             killMask &= ~(0x1L << REGINDEX(i));
+    }
+
+    if (callNode != NULL && callNode->isJitDispatchJ9MethodCall(comp())) {
+    TR_ASSERT_FATAL(doNotKillJ9MethodArgReg, "should not kill this reg");
     }
 }
 

@@ -1262,6 +1262,10 @@ TR::Register *OMR::Z::Linkage::pushLongArg32(TR::Node *callNode, TR::Node *child
         } break;
     }
 
+#ifdef J9_PROJECT_SPECIFIC
+    isStorePair = callNode->isJitDispatchJ9MethodCall(comp());
+#endif
+
     if (!self()->isFirstParmAtFixedOffset()) {
         *stackOffsetPtr -= (isStoreOnlyLow) ? 4 : 8;
     } else if (self()->isFirstParmAtFixedOffset() && isStoreOnlyLow) {
@@ -1344,6 +1348,9 @@ TR::Register *OMR::Z::Linkage::pushArg(TR::Node *callNode, TR::Node *child, int3
                 argRegNum = self()->getIntegerArgumentRegister(numIntegerArgs);
         } break;
     }
+#ifdef J9_PROJECT_SPECIFIC
+    isStorePair = callNode->isJitDispatchJ9MethodCall(comp());
+#endif
 
     if ((argRegNum == TR::RealRegister::NoReg))
         isStoreArg = true;

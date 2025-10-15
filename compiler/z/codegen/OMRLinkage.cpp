@@ -1349,7 +1349,7 @@ TR::Register *OMR::Z::Linkage::pushArg(TR::Node *callNode, TR::Node *child, int3
         } break;
     }
 #ifdef J9_PROJECT_SPECIFIC
-    isStorePair = callNode->isJitDispatchJ9MethodCall(comp());
+    isStoreArg = callNode->isJitDispatchJ9MethodCall(comp());
 #endif
 
     if ((argRegNum == TR::RealRegister::NoReg))

@@ -1664,9 +1664,8 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
     }
 
     // Add special argument register dependency
+    // this will inc <from> for jitDispatchJ9Method
     self()->addSpecialRegDepsForBuildArgs(callNode, dependencies, from, step);
-    if (isJITDispatchJ9Method)
-        from += 1;
 
     for (i = from; (rightToLeft && i >= to) || (!rightToLeft && i <= to); i += step) {
         child = callNode->getChild(i);

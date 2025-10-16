@@ -1262,10 +1262,6 @@ TR::Register *OMR::Z::Linkage::pushLongArg32(TR::Node *callNode, TR::Node *child
         } break;
     }
 
-#ifdef J9_PROJECT_SPECIFIC
-    isStorePair = callNode->isJitDispatchJ9MethodCall(comp());
-#endif
-
     if (!self()->isFirstParmAtFixedOffset()) {
         *stackOffsetPtr -= (isStoreOnlyLow) ? 4 : 8;
     } else if (self()->isFirstParmAtFixedOffset() && isStoreOnlyLow) {
@@ -1348,9 +1344,6 @@ TR::Register *OMR::Z::Linkage::pushArg(TR::Node *callNode, TR::Node *child, int3
                 argRegNum = self()->getIntegerArgumentRegister(numIntegerArgs);
         } break;
     }
-#ifdef J9_PROJECT_SPECIFIC
-    isStoreArg = callNode->isJitDispatchJ9MethodCall(comp());
-#endif
 
     if ((argRegNum == TR::RealRegister::NoReg))
         isStoreArg = true;
@@ -1571,20 +1564,12 @@ void OMR::Z::Linkage::loadIntArgumentsFromStack(TR::Node *callNode, TR::Register
 /**
  * Do not kill special regs (java stack ptr, system stack ptr, and method metadata reg)
  */
-void OMR::Z::Linkage::doNotKillSpecialRegsForBuildArgs(TR::Linkage *linkage, bool isFastJNI, int64_t &killMask, TR::Node *callNode)
+void OMR::Z::Linkage::doNotKillSpecialRegsForBuildArgs(TR::Linkage *linkage, bool isFastJNI, int64_t &killMask)
 {
     int32_t i;
-    bool doNotKillJ9MethodArgReg = false;
     for (i = TR::RealRegister::FirstGPR; i <= TR::RealRegister::LastFPR; i++) {
-        if (REGNUM(i) == getJ9MethodArgumentRegister()) {
-            doNotKillJ9MethodArgReg = true;
-        }
         if (linkage->getPreserved(REGNUM(i)))
             killMask &= ~(0x1L << REGINDEX(i));
-    }
-
-    if (callNode != NULL && callNode->isJitDispatchJ9MethodCall(comp())) {
-    TR_ASSERT_FATAL(doNotKillJ9MethodArgReg, "should not kill this reg");
     }
 }
 
@@ -1613,7 +1598,7 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
     const bool enableVectorLinkage = self()->cg()->getSupportsVectorRegisters();
 
     // Not kill special registers
-    self()->doNotKillSpecialRegsForBuildArgs(self(), isFastJNI, killMask, callNode);
+    self()->doNotKillSpecialRegsForBuildArgs(self(), isFastJNI, killMask);
 
     // For the generated classObject argument, we didn't use them in the dispatch sequence.
     // Simply evaluating them would be enough. Care must be taken when we begin to use them,

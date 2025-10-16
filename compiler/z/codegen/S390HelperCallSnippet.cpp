@@ -55,7 +55,7 @@ uint8_t *TR::S390HelperCallSnippet::emitSnippetBody()
     TR::SymbolReference *helperSymRef = getHelperSymRef();
     bool jitInduceOSR = helperSymRef->isOSRInductionHelper();
     bool isJitDispatchJ9Method = callNode->isJitDispatchJ9MethodCall(cg()->comp());
-    if (jitInduceOSR || (isJitDispatchJ9Method && feGetEnv("toStackForDispatch") != NULL)) {
+    if (jitInduceOSR) {
         // Flush in-register arguments back to the stack for interpreter
         cursor = TR::S390CallSnippet::S390flushArgumentsToStack(cursor, callNode, getSizeOfArguments(), cg());
     }

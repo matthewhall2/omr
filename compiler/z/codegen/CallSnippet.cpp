@@ -73,6 +73,9 @@ uint8_t *TR::S390CallSnippet::S390flushArgumentsToStack(uint8_t *buffer, TR::Nod
     TR::Machine *machine = cg->machine();
     TR::Linkage *linkage = cg->getLinkage(callNode->getSymbol()->castToMethodSymbol()->getLinkageConvention());
     bool isJitDispatchJ9Method = callNode->isJitDispatchJ9MethodCall(comp());
+    if (isJitDispatchJ9Method) {
+        traceMsg(comp(), "flushing args for jitDispatchJ9Method\n");
+    }
 
     int32_t argStart = callNode->getFirstArgumentIndex();
     bool rightToLeft = linkage->getRightToLeft() &&
@@ -90,6 +93,9 @@ uint8_t *TR::S390CallSnippet::S390flushArgumentsToStack(uint8_t *buffer, TR::Nod
     }
 
     for (int32_t i = argStart; i < callNode->getNumChildren(); i++) {
+        if (callNode->getNumChildren() == 1 && isJitDispatchJ9Method) {
+            TR_ASSERT_FATAL(false, "should not be here for JitDispatchJ9Method with no args");
+        }
         TR::Node *child = callNode->getChild(i);
         switch (child->getDataType()) {
             case TR::Int8:

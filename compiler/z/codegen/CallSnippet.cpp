@@ -96,6 +96,7 @@ uint8_t *TR::S390CallSnippet::S390flushArgumentsToStack(uint8_t *buffer, TR::Nod
         if (callNode->getNumChildren() == 1 && isJitDispatchJ9Method) {
             TR_ASSERT_FATAL(false, "should not be here for JitDispatchJ9Method with no args");
         }
+        traceMsg(comp(), "storing arg %d\n", i);
         TR::Node *child = callNode->getChild(i);
         switch (child->getDataType()) {
             case TR::Int8:

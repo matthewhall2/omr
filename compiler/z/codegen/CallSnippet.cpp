@@ -87,7 +87,7 @@ uint8_t *TR::S390CallSnippet::S390flushArgumentsToStack(uint8_t *buffer, TR::Nod
         !callNode->getSymbolReference()->isOSRInductionHelper() && !isJitDispatchJ9Method;
 
     if (isJitDispatchJ9Method) {
-        argStart++; // skip the J9Method argument
+   //     argStart++; // skip the J9Method argument
     }
 
     if (rightToLeft) {
@@ -123,7 +123,12 @@ uint8_t *TR::S390CallSnippet::S390flushArgumentsToStack(uint8_t *buffer, TR::Nod
                 if (!rightToLeft) {
                     offset -= cg->comp()->target().is64Bit() ? 8 : 4;
                 }
-                if (intArgNum < linkage->getNumIntegerArgumentRegisters()) {
+                if (i == 0 && isJitDispatchJ9Method) {
+                    buffer = storeArgumentItem(TR::InstOpCode::getStoreOpCode(), buffer,
+                        machine->getRealRegister(linkage->getJ9MethodArgumentRegister()), offset, cg);
+                    break;
+                }
+                else if (intArgNum < linkage->getNumIntegerArgumentRegisters()) {
                     buffer = storeArgumentItem(TR::InstOpCode::getStoreOpCode(), buffer,
                         machine->getRealRegister(linkage->getIntegerArgumentRegister(intArgNum)), offset, cg);
                 }

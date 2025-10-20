@@ -54,8 +54,12 @@
 #define TR_S390_ARG_SLOT_SIZE 4
 
 uint8_t *TR::S390CallSnippet::storeArgumentItem(TR::InstOpCode::Mnemonic op, uint8_t *buffer, TR::RealRegister *reg,
-    int32_t offset, TR::CodeGenerator *cg)
+    int32_t offset, TR::CodeGenerator *cg, bool isJitDispatch)
 {
+    if (isJitDispatch) {
+        printf("storing arg for jit dispatch\n");
+        traceMsg(comp(), "arg stored for jit dispatch\n");
+    }
     TR::RealRegister *stackPtr = cg->getStackPointerRealRegister();
     TR::InstOpCode opCode(op);
     opCode.copyBinaryToBuffer(buffer);

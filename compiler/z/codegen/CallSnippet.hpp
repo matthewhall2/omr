@@ -87,7 +87,7 @@ public:
     TR::SymbolReference *getRealMethodSymbolReference() { return _realMethodSymbolReference; }
 
     static uint8_t *storeArgumentItem(TR::InstOpCode::Mnemonic op, uint8_t *buffer, TR::RealRegister *reg,
-        int32_t offset, TR::CodeGenerator *cg);
+        int32_t offset, TR::CodeGenerator *cg, bool isJitDispatch = false);
     static uint8_t *S390flushArgumentsToStack(uint8_t *buffer, TR::Node *callNode, int32_t argSize,
         TR::CodeGenerator *cg);
     static int32_t instructionCountForArguments(TR::Node *callNode, TR::CodeGenerator *cg);

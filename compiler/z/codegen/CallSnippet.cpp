@@ -87,7 +87,7 @@ uint8_t *TR::S390CallSnippet::S390flushArgumentsToStack(uint8_t *buffer, TR::Nod
         !callNode->getSymbolReference()->isOSRInductionHelper() && !isJitDispatchJ9Method;
 
     if (isJitDispatchJ9Method) {
-        argStart++; // skip the J9Method argument
+      //  argStart++; // skip the J9Method argument
     }
 
     if (rightToLeft) {

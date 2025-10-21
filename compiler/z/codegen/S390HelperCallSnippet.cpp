@@ -108,6 +108,11 @@ uint8_t *TR::S390HelperCallSnippet::emitSnippetBody()
     // If MCC is supported, we will look up the appropriate trampoline, if
     //     necessary.
     intptr_t destAddr = (intptr_t)(helperSymRef->getSymbol()->castToMethodSymbol()->getMethodAddress());
+    intptr_t destAddr2 = (intptr_t)helperSymRef->getMethodAddress();
+    if (isJitDispatchJ9Method) {
+        traceMsg(cg()->comp(), "methodSymbol: %p, addr: %d\n", destAddr, destAddr2);
+        destAddr = destAddr2;
+    }
 #if defined(TR_TARGET_64BIT)
 #if defined(J9ZOS390)
     if (cg()->comp()->getOption(TR_EnableRMODE64))

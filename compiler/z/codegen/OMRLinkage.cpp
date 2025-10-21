@@ -1596,7 +1596,6 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
     TR::DataType resDataType = resType.getDataType();
     bool isJITDispatchJ9Method = callNode->isJitDispatchJ9MethodCall(comp());
     const bool enableVectorLinkage = self()->cg()->getSupportsVectorRegisters();
-
     // Not kill special registers
     self()->doNotKillSpecialRegsForBuildArgs(self(), isFastJNI, killMask);
 

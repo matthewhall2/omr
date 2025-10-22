@@ -349,6 +349,9 @@ void *OMR::Z::Linkage::saveArguments(void *cursor, bool genBinary, bool InPrePro
     TR::ParameterSymbol *paramCursor;
 
     TR::Node *firstNode = self()->comp()->getStartTree()->getNode();
+    if (firstNode->isJitDispatchJ9MethodCall(self()->cg()->comp())) {
+        traceMsg(self()->cg()->comp(), "found jit dispatch in save args\n");
+    }
 
     TR_BitVector globalAllocatedRegisters;
     TR_BitVector freeScratchable;
@@ -395,6 +398,7 @@ void *OMR::Z::Linkage::saveArguments(void *cursor, bool genBinary, bool InPrePro
         }
     }
 
+    
     for (paramCursor = paramIterator.getFirst(); paramCursor != NULL; paramCursor = paramIterator.getNext()) {
         int32_t ai = paramCursor->getAssignedGlobalRegisterIndex();
         int32_t ai_l = paramCursor->getAssignedLowGlobalRegisterIndex(); //  low reg of a pair

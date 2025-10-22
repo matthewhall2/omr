@@ -109,8 +109,8 @@ uint8_t *TR::S390HelperCallSnippet::emitSnippetBody()
     //     necessary.
     intptr_t destAddr = (intptr_t)(helperSymRef->getSymbol()->castToMethodSymbol()->getMethodAddress());
     intptr_t destAddr2 = (intptr_t)helperSymRef->getMethodAddress();
-    if (isJitDispatchJ9Method) {
-        traceMsg(cg()->comp(), "methodSymbol: %p, addr: %d\n", destAddr, destAddr2);
+    traceMsg(cg()->comp(), "methodSymbol: %p, addr: %p\n", destAddr, destAddr2);
+    if (isJitDispatchJ9Method && feGetEnv("useSecondDest") != NULL) {
         destAddr = destAddr2;
     }
 #if defined(TR_TARGET_64BIT)

@@ -603,6 +603,7 @@ void *OMR::Z::Linkage::saveArguments(void *cursor, bool genBinary, bool InPrePro
                     case TR::Address:
                     case TR::Int64:
                     case TR::Aggregate: // Should only happen on zLinux
+                    traceMsg(self()->cg()->comp(), "storing arg for snippet\n");
                     {
                         if (genBinary) {
                             cursor = (void *)TR::S390CallSnippet::storeArgumentItem(storeOpCode, (uint8_t *)cursor,

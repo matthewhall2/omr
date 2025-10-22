@@ -596,7 +596,7 @@ void *OMR::Z::Linkage::saveArguments(void *cursor, bool genBinary, bool InPrePro
             // However, this broke some java modes (OSR,HCR).  Likely, those modes should rely on 'unconditionalSave' to
             // ensure we always store out to the stack for whenever we need all variables on the stack. This
             // investigation will be a future todo .
-
+           // getJ9MethodArgumentRegister() == regNum;
             if ((ai < 0 && paramCursor->isReferencedParameter()) || self()->hasToBeOnStack(paramCursor)
                 || unconditionalSave) {
                 bool regIsUsed = false;
@@ -608,6 +608,9 @@ void *OMR::Z::Linkage::saveArguments(void *cursor, bool genBinary, bool InPrePro
                     case TR::Int64:
                     case TR::Aggregate: // Should only happen on zLinux
                     traceMsg(self()->cg()->comp(), "storing arg for snippet\n");
+                    if (regNum == getJ9MethodArgumentRegister()) {
+                        traceMsg(self()->cg()->comp(), "trying to store j9method arg\n");
+                    }
                     {
                         if (genBinary) {
                             cursor = (void *)TR::S390CallSnippet::storeArgumentItem(storeOpCode, (uint8_t *)cursor,

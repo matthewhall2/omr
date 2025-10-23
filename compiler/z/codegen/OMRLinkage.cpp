@@ -1606,6 +1606,9 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
     const bool enableVectorLinkage = self()->cg()->getSupportsVectorRegisters();
     // Not kill special registers
     self()->doNotKillSpecialRegsForBuildArgs(self(), isFastJNI, killMask);
+    if (callNode->isJitDispatchJ9MethodCall(comp())) {
+        TR_ASSERT_FATAL(self()->getPreserved(getJ9MethodArgumentRegister()), "method reg is not preserved\n");
+    }
 
     // For the generated classObject argument, we didn't use them in the dispatch sequence.
     // Simply evaluating them would be enough. Care must be taken when we begin to use them,

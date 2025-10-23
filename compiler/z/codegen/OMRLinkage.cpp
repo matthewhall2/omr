@@ -1860,7 +1860,6 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
     // or any other regs that are in the post conditions already
     TR::Register *dummyReg;
     TR::RealRegister::RegNum last = TR::RealRegister::LastFPR;
-    TR::RealRegister::get
     for (i = TR::RealRegister::FirstGPR; i <= last; i++) {
         if ((killMask & (0x1L << REGINDEX(i)))) {
             dummyReg = NULL;

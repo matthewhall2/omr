@@ -79,6 +79,9 @@ public:
     virtual uint8_t *emitSnippetBody();
 
     virtual uint32_t getLength(int32_t);
+
+protected:
+    uint8_t *emitSnippetBodyHelper();
 };
 
 } // namespace TR

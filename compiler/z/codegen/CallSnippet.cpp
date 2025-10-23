@@ -66,7 +66,7 @@ uint8_t *TR::S390CallSnippet::storeArgumentItem(TR::InstOpCode::Mnemonic op, uin
     return buffer + opCode.getInstructionLength();
 }
 
-uint8_t *S390flushArgumentsToStackHelper(uint8_t *buffer, TR::Node *callNode, int32_t argSize,
+uint8_t *TR::S390CallSnippet::S390flushArgumentsToStackHelper(uint8_t *buffer, TR::Node *callNode, int32_t argSize,
         TR::CodeGenerator *cg, int argStart, bool rightToLeft)
 {
     int32_t intArgNum = 0, floatArgNum = 0, offset;

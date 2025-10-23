@@ -80,7 +80,6 @@ uint8_t *S390flushArgumentsToStackHelper(uint8_t *buffer, TR::Node *callNode, in
     }
 
     for (int32_t i = argStart; i < callNode->getNumChildren(); i++) {
-        traceMsg(comp(), "storing arg %d\n", i);
         TR::Node *child = callNode->getChild(i);
         switch (child->getDataType()) {
             case TR::Int8:
@@ -103,12 +102,8 @@ uint8_t *S390flushArgumentsToStackHelper(uint8_t *buffer, TR::Node *callNode, in
                 if (!rightToLeft) {
                     offset -= cg->comp()->target().is64Bit() ? 8 : 4;
                 }
-                if (i == 0 && isJitDispatchJ9Method) {
-                    buffer = storeArgumentItem(TR::InstOpCode::getStoreOpCode(), buffer,
-                        machine->getRealRegister(linkage->getJ9MethodArgumentRegister()), offset, cg);
-                    break;
-                }
-                else if (intArgNum < linkage->getNumIntegerArgumentRegisters()) {
+                
+                if (intArgNum < linkage->getNumIntegerArgumentRegisters()) {
                     buffer = storeArgumentItem(TR::InstOpCode::getStoreOpCode(), buffer,
                         machine->getRealRegister(linkage->getIntegerArgumentRegister(intArgNum)), offset, cg);
                 }

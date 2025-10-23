@@ -105,6 +105,7 @@ public:
      */
     static int32_t adjustCallOffsetWithTrampoline(uintptr_t targetAddr, uint8_t *currentInst,
         TR::SymbolReference *callSymRef, TR::Snippet *snippet);
+
 private:
     static uint8_t *S390flushArgumentsToStackHelper(uint8_t *buffer, TR::Node *callNode, int32_t argSize,
         TR::CodeGenerator *cg, int argStart, bool rightToLeft);

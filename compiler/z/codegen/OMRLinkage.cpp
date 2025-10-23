@@ -1574,6 +1574,7 @@ void OMR::Z::Linkage::loadIntArgumentsFromStack(TR::Node *callNode, TR::Register
  */
 void OMR::Z::Linkage::doNotKillSpecialRegsForBuildArgs(TR::Linkage *linkage, bool isFastJNI, int64_t &killMask)
 {
+        traceMsg(comp(), "OMR linkage: do not kill\n");
     int32_t i;
     for (i = TR::RealRegister::FirstGPR; i <= TR::RealRegister::LastFPR; i++) {
         if (linkage->getPreserved(REGNUM(i)))
@@ -1605,6 +1606,7 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
     bool isJITDispatchJ9Method = callNode->isJitDispatchJ9MethodCall(comp());
     const bool enableVectorLinkage = self()->cg()->getSupportsVectorRegisters();
     // Not kill special registers
+    traceMsg(comp(), "OMR: setting kill regs\n");
     self()->doNotKillSpecialRegsForBuildArgs(self(), isFastJNI, killMask);
     if (callNode->isJitDispatchJ9MethodCall(comp())) {
         TR_ASSERT_FATAL(self()->getPreserved(getJ9MethodArgumentRegister()), "method reg is not preserved\n");

@@ -54,12 +54,8 @@
 #define TR_S390_ARG_SLOT_SIZE 4
 
 uint8_t *TR::S390CallSnippet::storeArgumentItem(TR::InstOpCode::Mnemonic op, uint8_t *buffer, TR::RealRegister *reg,
-    int32_t offset, TR::CodeGenerator *cg, bool isJitDispatch)
+    int32_t offset, TR::CodeGenerator *cg)
 {
-    if (isJitDispatch) {
-        printf("storing arg for jit dispatch\n");
-        traceMsg(comp(), "arg stored for jit dispatch\n");
-    }
     TR::RealRegister *stackPtr = cg->getStackPointerRealRegister();
     TR::InstOpCode opCode(op);
     opCode.copyBinaryToBuffer(buffer);
@@ -70,36 +66,20 @@ uint8_t *TR::S390CallSnippet::storeArgumentItem(TR::InstOpCode::Mnemonic op, uin
     return buffer + opCode.getInstructionLength();
 }
 
-uint8_t *TR::S390CallSnippet::S390flushArgumentsToStack(uint8_t *buffer, TR::Node *callNode, int32_t argSize,
-    TR::CodeGenerator *cg)
+uint8_t *S390flushArgumentsToStackHelper(uint8_t *buffer, TR::Node *callNode, int32_t argSize,
+        TR::CodeGenerator *cg, int argStart, bool rightToLeft)
 {
     int32_t intArgNum = 0, floatArgNum = 0, offset;
     TR::Machine *machine = cg->machine();
     TR::Linkage *linkage = cg->getLinkage(callNode->getSymbol()->castToMethodSymbol()->getLinkageConvention());
-    bool isJitDispatchJ9Method = callNode->isJitDispatchJ9MethodCall(comp());
-    if (isJitDispatchJ9Method) {
-        traceMsg(comp(), "flushing args for jitDispatchJ9Method\n");
-    }
 
-    int32_t argStart = callNode->getFirstArgumentIndex();
-    bool rightToLeft = linkage->getRightToLeft() &&
-        // we want the arguments for induceOSR to be passed from left to right as in any other non-helper call
-        !callNode->getSymbolReference()->isOSRInductionHelper() && !isJitDispatchJ9Method;
-
-    if (isJitDispatchJ9Method) {
-        argStart++; // skip the J9Method argument
-    }
-
-    if (rightToLeft) {
+     if (rightToLeft) {
         offset = linkage->getOffsetToFirstParm();
     } else {
         offset = argSize + linkage->getOffsetToFirstParm();
     }
 
     for (int32_t i = argStart; i < callNode->getNumChildren(); i++) {
-        if (callNode->getNumChildren() == 1 && isJitDispatchJ9Method) {
-         //   TR_ASSERT_FATAL(false, "should not be here for JitDispatchJ9Method with no args");
-        }
         traceMsg(comp(), "storing arg %d\n", i);
         TR::Node *child = callNode->getChild(i);
         switch (child->getDataType()) {
@@ -194,6 +174,30 @@ uint8_t *TR::S390CallSnippet::S390flushArgumentsToStack(uint8_t *buffer, TR::Nod
     }
 
     return buffer;
+}
+
+uint8_t *TR::S390CallSnippet::S390flushArgumentsToStack(uint8_t *buffer, TR::Node *callNode, int32_t argSize,
+    TR::CodeGenerator *cg)
+{
+    int32_t intArgNum = 0, floatArgNum = 0, offset;
+    TR::Machine *machine = cg->machine();
+    TR::Linkage *linkage = cg->getLinkage(callNode->getSymbol()->castToMethodSymbol()->getLinkageConvention());
+    bool isJitDispatchJ9Method = callNode->isJitDispatchJ9MethodCall(comp());
+    if (isJitDispatchJ9Method) {
+        traceMsg(comp(), "flushing args for jitDispatchJ9Method\n");
+    }
+
+    int32_t argStart = callNode->getFirstArgumentIndex();
+    bool rightToLeft = linkage->getRightToLeft() &&
+        // we want the arguments for induceOSR to be passed from left to right as in any other non-helper call
+        !callNode->getSymbolReference()->isOSRInductionHelper() && !isJitDispatchJ9Method;
+
+    if (isJitDispatchJ9Method) {
+        argStart++; // skip the J9Method argument
+    }
+
+    return S390flushArgumentsToStackHelper(buffer, callNode, argSize, cg, argStart, rightToLeft);
+
 }
 
 int32_t TR::S390CallSnippet::adjustCallOffsetWithTrampoline(uintptr_t targetAddr, uint8_t *currentInst,

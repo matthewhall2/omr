@@ -142,7 +142,8 @@ uint8_t *TR::S390HelperCallSnippet::emitSnippetBody()
         // Flush in-register arguments back to the stack for interpreter
         cursor = TR::S390CallSnippet::S390flushArgumentsToStack(cursor, callNode, getSizeOfArguments(), cg());
     }
-    emitSnippetBodyHelper(cursor, helperSymRef);
+
+    return emitSnippetBodyHelper(cursor, helperSymRef);
 }
 
 uint32_t TR::S390HelperCallSnippet::getLength(int32_t)

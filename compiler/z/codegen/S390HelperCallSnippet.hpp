@@ -81,7 +81,7 @@ public:
     virtual uint32_t getLength(int32_t);
 
 protected:
-    uint8_t *emitSnippetBodyHelper();
+    uint8_t *emitSnippetBodyHelper(uint8_t *cursor, TR::SymbolReference *helperSymRef);
 };
 
 } // namespace TR

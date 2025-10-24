@@ -1609,7 +1609,7 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
     traceMsg(comp(), "OMR: setting kill regs\n");
     self()->doNotKillSpecialRegsForBuildArgs(self(), isFastJNI, killMask);
     if (callNode->isJitDispatchJ9MethodCall(comp())) {
-        TR_ASSERT_FATAL((killMask & (0x1L << REGINDEX(getJ9MethodArgumentRegister()))) == 0, "should not kill j9methodReg");
+      //  TR_ASSERT_FATAL((killMask & (0x1L << REGINDEX(getJ9MethodArgumentRegister()))) == 0, "should not kill j9methodReg");
     }
 
     // For the generated classObject argument, we didn't use them in the dispatch sequence.

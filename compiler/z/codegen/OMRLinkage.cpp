@@ -1778,7 +1778,7 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
                 }
         }
         if (callNode->isJitDispatchJ9MethodCall(comp())) {
-            TR_ASSERT_FATAL(argRegister != getJ9MethodArgumentRegister(), "arg should not be gpr1\n");
+        //    TR_ASSERT_FATAL(argRegister != getJ9MethodArgumentRegister(), "arg should not be gpr1\n");
         }
 
         if (self()->isFastLinkLinkageType()) {

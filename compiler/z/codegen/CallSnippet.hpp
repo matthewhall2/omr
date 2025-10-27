@@ -51,7 +51,7 @@ protected:
     TR::SymbolReference *_realMethodSymbolReference;
 
     static uint8_t *S390flushArgumentsToStackHelper(uint8_t *buffer, TR::Node *callNode, int32_t argSize,
-        TR::CodeGenerator *cg, int argStart, bool rightToLeft, TR::Linkage *linkage);
+        TR::CodeGenerator *cg, int argStart, int32_t intArgNum, bool rightToLeft, TR::Linkage *linkage);
 
 public:
     S390CallSnippet(TR::CodeGenerator *cg, TR::Node *c, TR::LabelSymbol *lab, int32_t s)

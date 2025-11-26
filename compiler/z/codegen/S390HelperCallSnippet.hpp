@@ -45,7 +45,7 @@ class S390HelperCallSnippet : public TR::Snippet {
 public:
     S390HelperCallSnippet(TR::CodeGenerator *cg, TR::Node *node, TR::LabelSymbol *snippetlab,
         TR::SymbolReference *helper, TR::LabelSymbol *restartlab = NULL, int32_t s = 0)
-        : TR::Snippet(cg, node, snippetlab, (restartlab == NULL))
+        : TR::Snippet(cg, node, snippetlab, (restartLabel != NULL && helper->canCauseGC()))
         , _reStartLabel(restartlab)
         , _helperSymRef(helper)
         , sizeOfArguments(s)

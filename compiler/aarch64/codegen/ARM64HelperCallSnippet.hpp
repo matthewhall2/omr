@@ -95,11 +95,11 @@ public:
     /**
      * @brief Prints the Snippet
      */
-    virtual void print(OMR::Logger *log, TR_Debug *);
+   virtual void print(OMR::Logger *log, TR_Debug *);
 
 protected:
     uint8_t *emitSnippetBodyInner(uint8_t *cursor);
-    void printInner(OMR::Logger *log, TR_Debug *debug, uint8_t *cursor);
+    void printInner(OMR::Logger *log, TR_Debug* debug, uint8_t *cursor, TR::LabelSymbol *restartLabel);
 };
 
 } // namespace TR

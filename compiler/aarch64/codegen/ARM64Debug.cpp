@@ -3030,6 +3030,9 @@ const char *TR_Debug::getNamea64(TR::Snippet *snippet)
         case TR::Snippet::IsHelperCall:
             return "Helper Call Snippet";
             break;
+        case TR::Snippet::IsJ9HelperCall:
+            return "J9 Helper Call Snippet";
+            break;
         case TR::Snippet::IsMonitorEnter:
             return "MonitorEnter Inc Counter";
             break;
@@ -3068,6 +3071,9 @@ void TR_Debug::printa64(OMR::Logger *log, TR::Snippet *snippet)
             break;
         case TR::Snippet::IsRecompilation:
             print(log, (TR::ARM64RecompilationSnippet *)snippet);
+            break;
+        case TR::Snippet::IsJ9HelperCall:
+            snippet->print(log, this);
             break;
 #endif
         case TR::Snippet::IsHelperCall:

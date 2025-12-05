@@ -70,17 +70,18 @@ uint8_t *TR::ARM64HelperCallSnippet::emitSnippetBody()
     return emitSnippetBodyInner(cursor);
 }
 
+
 void TR::ARM64HelperCallSnippet::print(OMR::Logger *log, TR_Debug *debug)
 {
     uint8_t *bufferPos = getSnippetLabel()->getCodeLocation();
+    auto restartLabel = getRestartLabel();
 
     debug->printSnippetLabel(log, getSnippetLabel(), bufferPos, debug->getName(this));
-    printInner(log, debug, bufferPos);
+    printInner(log, debug, bufferPos, restartLabel);
 }
 
-void TR::ARM64HelperCallSnippet::printInner(OMR::Logger *log, TR_Debug *debug, uint8_t *bufferPos)
+void TR::ARM64HelperCallSnippet::printInner(OMR::Logger *log, TR_Debug *debug, uint8_t *bufferPos, TR::LabelSymbol *restartLabel)
 {
-    auto restartLabel = getRestartLabel();
     char *info = "";
     intptr_t target = (intptr_t)(getDestination()->getSymbol()->castToMethodSymbol()->getMethodAddress());
     int32_t distance;

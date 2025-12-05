@@ -76,6 +76,7 @@ public:
         IsVirtualUnresolved,
         IsInterfaceCall,
         IsHelperCall,
+        IsJ9HelperCall,
         IsMonitorEnter,
         IsMonitorExit,
         IsHeapAlloc,

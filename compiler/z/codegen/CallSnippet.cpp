@@ -282,7 +282,7 @@ uint8_t *TR::S390CallSnippet::printS390ArgumentsFlush(OMR::Logger *log, TR::Node
         offset = argSize + privateLinkage->getOffsetToFirstParm();
     }
 
-    for (int i = node->getFirstArgumentIndex(); i < node->getNumChildren(); i++) {
+    for (int i = argStart; i < node->getNumChildren(); i++) {
         TR::Node *child = node->getChild(i);
         switch (child->getDataType()) {
             case TR::Int8:

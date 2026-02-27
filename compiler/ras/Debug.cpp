@@ -3076,6 +3076,8 @@ const char *TR_Debug::getRuntimeHelperName(int32_t index)
             case TR_interpreterUnresolvedMethodTypeTableEntryGlue:
                 return "interpreterUnresolvedMethodTypeTableEntryGlue";
 
+            case TR_jitProfileParseBuffer:
+                return "jitProfileParseBuffer";
             case TR_jitProfileValue:
                 return "jitProfileValue";
             case TR_jitProfileLongValue:

@@ -2807,6 +2807,9 @@ void OMR::Options::init()
     _breakOnPrint = NULL;
     _enabledStaticCounterNames = NULL;
     _enabledDynamicCounterNames = NULL;
+    _breakOnHelperCall = NULL;
+
+
     _counterHistogramNames = NULL;
     _verboseOptTransformationsRegex = NULL;
     _packedTest = NULL;

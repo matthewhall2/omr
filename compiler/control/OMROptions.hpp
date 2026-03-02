@@ -1729,6 +1729,8 @@ public:
 
     TR::SimpleRegex *getBreakOnOpts() { return _breakOnOpts; }
 
+    TR::SimpleRegex *getBreakOnHelperCall() { return _breakOnHelperCall; }
+
     TR::SimpleRegex *getSlipTrap() { return _slipTrap; }
 
     TR::SimpleRegex *getLockReserveClass() { return _lockReserveClass; }
@@ -2548,6 +2550,7 @@ protected:
     TR::SimpleRegex *_tryToInline;
     TR::SimpleRegex *_slipTrap;
     TR::SimpleRegex *_lockReserveClass;
+    TR::SimpleRegex *_breakOnHelperCall;  // Add after _breakOnPrint
     TR::SimpleRegex *_breakOnOpts;
     TR::SimpleRegex *_breakOnCreate;
     TR::SimpleRegex *_debugOnCreate;

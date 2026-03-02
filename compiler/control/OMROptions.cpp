@@ -190,10 +190,10 @@ TR::OptionTable OMR::Options::_jitOptions[] = {
     { "breakOnCompile", "D\tdeprecated; equivalent to breakBeforeCompile", SET_OPTION_BIT(TR_BreakBeforeCompile), "F" },
     { "breakOnCreate=", "D{regex}\traise trap when creating an item whose name matches regex", TR::Options::setRegex,
      offsetof(OMR::Options, _breakOnCreate), 0, "P" },
-     { "breakOnHelperCall=", "D{regex}\tbreak when calling helper with matching regex", 
-  TR::Options::setRegex, offsetof(OMR::Options, _breakOnHelperCall), 0, "P" },
     { "breakOnEntry", "D\tinsert entry breakpoint instruction in generated code", SET_OPTION_BIT(TR_EntryBreakPoints),
      "F" },
+     { "breakOnHelperCall=", "D{regex}\tbreak when calling helper with matching regex", 
+  TR::Options::setRegex, offsetof(OMR::Options, _breakOnHelperCall), 0, "P" },
     { "breakOnJ2IThunk", "D\tbreak before executing a jit-to-interpreter thunk", SET_OPTION_BIT(TR_BreakOnJ2IThunk),
      "P", NOT_IN_SUBSET },
     { "breakOnLoad", "D\tbreak after the options have been processed", TR::Options::breakOnLoad, 0, 0, "P",
@@ -2800,7 +2800,6 @@ void OMR::Options::init()
     _tryToInline = NULL;
     _slipTrap = NULL;
     _lockReserveClass = NULL;
-    _breakOnHelperCall = NULL;
     _breakOnOpts = NULL;
     _breakOnCreate = NULL;
     _debugOnCreate = NULL;

@@ -68,7 +68,9 @@ TR::Register *OMR::CodeGenerator::evaluate(TR::Node *node)
 
     if (opcode != TR::BBStart && node->getRegister()) {
         reg = node->getRegister();
+        logprintf(trace, log, "already have register for node %s\n", self()->getDebug()->getName(node));
     } else {
+        logprintf(trace, log, "do not have reg for node %s, fetching\n", self()->getDebug()->getName(node));
         // Evaluation of a TR IL tree can be performed by many functions:
         //
         // 1) evaluate(...)

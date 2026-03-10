@@ -117,7 +117,7 @@ void TR_ScratchRegisterManager::addScratchRegistersToPreDependencyList(TR::Regis
     TR_ManagedScratchRegister *msr = iterator.getFirst();
 
     while (msr) {
-        deps->addPreCondition(msr->_reg, _cg);
+        deps->unionNoRegPreCondition(msr->_reg, _cg);
         msr = iterator.getNext();
     }
 }

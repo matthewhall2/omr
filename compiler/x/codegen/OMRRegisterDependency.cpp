@@ -339,6 +339,11 @@ void OMR::X86::RegisterDependencyConditions::unionNoRegPostCondition(TR::Registe
     unionPostCondition(reg, TR::RealRegister::NoReg, cg);
 }
 
+void OMR::X86::RegisterDependencyConditions::unionNoRegPreCondition(TR::Register *reg, TR::CodeGenerator *cg)
+{
+    addPreCondition(reg, TR::RealRegister::NoReg, cg);
+}
+
 uint32_t OMR::X86::RegisterDependencyConditions::unionRealDependencies(TR::RegisterDependencyGroup *deps,
     uint32_t cursor, TR::Register *vr, TR::RealRegister::RegNum rr, TR::CodeGenerator *cg, uint8_t flag,
     bool isAssocRegDependency)

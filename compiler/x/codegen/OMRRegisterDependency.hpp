@@ -141,6 +141,8 @@ public:
 
     void unionNoRegPostCondition(TR::Register *reg, TR::CodeGenerator *cg);
 
+    void unionNoRegPreCondition(TR::Register *reg, TR::CodeGenerator *cg);
+
     TR::RegisterDependencyConditions *clone(TR::CodeGenerator *cg, uint32_t additionalRegDeps = 0);
 
     TR::RegisterDependencyGroup *getPreConditions() { return _preConditions; }

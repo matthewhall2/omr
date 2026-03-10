@@ -111,6 +111,17 @@ void TR_ScratchRegisterManager::addScratchRegistersToDependencyList(TR::Register
     }
 }
 
+void TR_ScratchRegisterManager::addScratchRegistersToPreDependencyList(TR::RegisterDependencyConditions *deps)
+{
+    ListIterator<TR_ManagedScratchRegister> iterator(&_msrList);
+    TR_ManagedScratchRegister *msr = iterator.getFirst();
+
+    while (msr) {
+        deps->addPreCondition(msr->_reg, _cg);
+        msr = iterator.getNext();
+    }
+}
+
 // Terminate the live range of non-donated registers.
 //
 void TR_ScratchRegisterManager::stopUsingRegisters()

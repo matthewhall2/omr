@@ -125,6 +125,7 @@ public:
     int32_t numAvailableRegisters() { return _cursor; }
 
     void addScratchRegistersToDependencyList(TR::RegisterDependencyConditions *deps);
+    void addScratchRegistersToPreDependencyList(TR::RegisterDependencyConditions *deps);
     void stopUsingRegisters();
 
     List<TR_ManagedScratchRegister> &getManagedScratchRegisterList() { return _msrList; }

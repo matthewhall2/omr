@@ -1820,7 +1820,7 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
     TR::Register *dummyReg;
     TR::RealRegister::RegNum last = TR::RealRegister::LastFPR;
 
-    for (i = TR::RealRegister::FirstGPR; i <= last; i++) {
+    for (int i = TR::RealRegister::FirstGPR; i <= last; i++) {
         if ((killMask & (0x1L << REGINDEX(i)))) {
             dummyReg = NULL;
             self()->killAndAssignRegister(killMask, dependencies, &dummyReg, REGNUM(i), self()->cg(), true, true);

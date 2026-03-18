@@ -1560,9 +1560,6 @@ void OMR::Z::Linkage::doNotKillSpecialRegsForBuildArgs(TR::Linkage *linkage, boo
     }
 }
 
-/**
- * Build arguments for System routines
- */
 int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyConditions *dependencies, bool isFastJNI,
     int64_t killMask, TR::Register *&vftReg, bool passReceiver, bool isRightToLeft)
 {
@@ -1618,7 +1615,7 @@ int32_t OMR::Z::Linkage::buildArgs(TR::Node *callNode, TR::RegisterDependencyCon
     // Add special argument register dependency
     self()->addSpecialRegDepsForBuildArgs(callNode, dependencies, from, step);
 
-    int32_t argsSize = 0;
+    int32_t argSize = 0;
     int8_t gprSize = self()->machine()->getGPRSize();
     const bool enableVectorLinkage = self()->cg()->getSupportsVectorRegisters();
     for (int i = from; (rightToLeft && i >= to) || (!rightToLeft && i <= to); i += step) {

@@ -330,7 +330,8 @@ public:
      * @param isFastJNI: indicates if this is a JNI call
      * @param killMask: a bit mask of the registers killed by the call
      * @param vftReg: the register holdin the class object, for virtual calls
-     * @param passReceiver: default is true. When true, receiver object is passed as a paramter for the target method, and is not evaluted here
+     * @param passReceiver: default is true. When true, receiver object is passed as a paramter for the target method,
+     * and is not evaluted here
      * @param isRightToLeft: to override the paramter order in special calls
      * @return The total size (in bytes) of the arguments
      */

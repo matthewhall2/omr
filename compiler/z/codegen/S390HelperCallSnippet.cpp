@@ -180,7 +180,9 @@ void TR::S390HelperCallSnippet::print(OMR::Logger *log, TR_Debug *debug)
     TR::MethodSymbol *methodSymbol = helperSymRef->getSymbol()->castToMethodSymbol();
     if (jitInduceOSR) {
         // Flush in-register arguments back to the stack for interpreter
-        TR::S390CallSnippet::printS390ArgumentsFlush(log, callNode, bufferPos, getSizeOfArguments(), debug, getNode()->getFirstArgumentIndex(), cg()->machine(), cg()->getLinkage(methodSymbol->getLinkageConvention()));
+        TR::S390CallSnippet::printS390ArgumentsFlush(log, callNode, bufferPos, getSizeOfArguments(), debug,
+            getNode()->getFirstArgumentIndex(), cg()->machine(),
+            cg()->getLinkage(methodSymbol->getLinkageConvention()));
     }
     debug->printSnippetLabel(log, getSnippetLabel(), bufferPos, "Helper Call Snippet", debug->getName(helperSymRef));
     printInner(log, debug, bufferPos);

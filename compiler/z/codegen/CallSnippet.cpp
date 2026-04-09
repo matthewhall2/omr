@@ -293,24 +293,27 @@ uint8_t *TR::S390CallSnippet::printS390ArgumentsFlush(OMR::Logger *log, TR::Node
                     offset -= comp()->target().is64Bit() ? 8 : 4;
                 }
                 if (intArgNum < privateLinkage->getNumIntegerArgumentRegisters()) {
-                    if (comp()->target().is64Bit() && child->getDataType() == TR::Address) {
-                        debug->printPrefix(log, NULL, bufferPos, 6);
-                        log->prints("STG  \t");
-                    } else {
-                        debug->printPrefix(log, NULL, bufferPos, 4);
-                        log->prints("ST   \t");
-                    }
+                    TR::InstOpCode::Mnemonic opcode = (comp()->target().is64Bit() && child->getDataType() == TR::Address) ? TR::InstOpCode::STG : TR::InstOpCode::ST;
+                    uint8_t opcodeSize = (comp()->target().is64Bit() && child->getDataType() == TR::Address) ? 6 : 4;
+                    printRXInstruction(log, debug, TR::InstOpCode::STG, machine->getRealRegister(privateLinkage->getIntegerArgumentRegister(intArgNum)), stackPtr, offset, bufferPos, opcodeSize);
+                    // if (comp()->target().is64Bit() && child->getDataType() == TR::Address) {
+                    //     debug->printPrefix(log, NULL, bufferPos, 6);
+                    //     log->prints("STG  \t");
+                    // } else {
+                    //     debug->printPrefix(log, NULL, bufferPos, 4);
+                    //     log->prints("ST   \t");
+                    // }
 
-                    debug->print(log, machine->getRealRegister(privateLinkage->getIntegerArgumentRegister(intArgNum)));
-                    log->printf(",%d(,", offset);
-                    debug->print(log, stackPtr);
-                    log->printc(')');
+                    // debug->print(log, machine->getRealRegister(privateLinkage->getIntegerArgumentRegister(intArgNum)));
+                    // log->printf(",%d(,", offset);
+                    // debug->print(log, stackPtr);
+                    // log->printc(')');
 
-                    if (comp()->target().is64Bit() && child->getDataType() == TR::Address) {
-                        bufferPos += 6;
-                    } else {
-                        bufferPos += 4;
-                    }
+                    // if (comp()->target().is64Bit() && child->getDataType() == TR::Address) {
+                    //     bufferPos += 6;
+                    // } else {
+                    //     bufferPos += 4;
+                    // }
                 }
                 intArgNum++;
                 if (privateLinkage->getRightToLeft()) {

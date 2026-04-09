@@ -295,25 +295,7 @@ uint8_t *TR::S390CallSnippet::printS390ArgumentsFlush(OMR::Logger *log, TR::Node
                 if (intArgNum < privateLinkage->getNumIntegerArgumentRegisters()) {
                     TR::InstOpCode::Mnemonic opcode = (comp()->target().is64Bit() && child->getDataType() == TR::Address) ? TR::InstOpCode::STG : TR::InstOpCode::ST;
                     uint8_t opcodeSize = (comp()->target().is64Bit() && child->getDataType() == TR::Address) ? 6 : 4;
-                    printRXInstruction(log, debug, TR::InstOpCode::STG, machine->getRealRegister(privateLinkage->getIntegerArgumentRegister(intArgNum)), stackPtr, offset, bufferPos, opcodeSize);
-                    // if (comp()->target().is64Bit() && child->getDataType() == TR::Address) {
-                    //     debug->printPrefix(log, NULL, bufferPos, 6);
-                    //     log->prints("STG  \t");
-                    // } else {
-                    //     debug->printPrefix(log, NULL, bufferPos, 4);
-                    //     log->prints("ST   \t");
-                    // }
-
-                    // debug->print(log, machine->getRealRegister(privateLinkage->getIntegerArgumentRegister(intArgNum)));
-                    // log->printf(",%d(,", offset);
-                    // debug->print(log, stackPtr);
-                    // log->printc(')');
-
-                    // if (comp()->target().is64Bit() && child->getDataType() == TR::Address) {
-                    //     bufferPos += 6;
-                    // } else {
-                    //     bufferPos += 4;
-                    // }
+                    bufferPos = printRXInstruction(log, debug, opcode, machine->getRealRegister(privateLinkage->getIntegerArgumentRegister(intArgNum)), stackPtr, offset, bufferPos, opcodeSize);
                 }
                 intArgNum++;
                 if (privateLinkage->getRightToLeft()) {
@@ -326,35 +308,15 @@ uint8_t *TR::S390CallSnippet::printS390ArgumentsFlush(OMR::Logger *log, TR::Node
                     offset -= (comp()->target().is64Bit() ? 16 : 8);
                 }
                 if (intArgNum < privateLinkage->getNumIntegerArgumentRegisters()) {
+                    TR::InstOpCode::Mnemonic opcode = (comp()->target().is64Bit() && child->getDataType() == TR::Address) ? TR::InstOpCode::STG : TR::InstOpCode::ST;
+                    uint8_t opcodeSize = (comp()->target().is64Bit() && child->getDataType() == TR::Address) ? 6 : 4;
                     if (comp()->target().is64Bit()) {
-                        debug->printPrefix(log, NULL, bufferPos, 6);
-                        log->prints("STG  \t");
-                        debug->print(log,
-                            machine->getRealRegister(privateLinkage->getIntegerArgumentRegister(intArgNum)));
-                        log->printf(",%d(,", offset);
-                        debug->print(log, stackPtr);
-                        log->printc(')');
-                        bufferPos += 6;
+                        bufferPos = printRXInstruction(log, debug, TR::InstOpCode::STG, machine->getRealRegister(privateLinkage->getIntegerArgumentRegister(intArgNum)), stackPtr, offset, bufferPos, 6);
                     } else {
-                        debug->printPrefix(log, NULL, bufferPos, 4);
-                        log->prints("ST   \t");
-                        debug->print(log,
-                            machine->getRealRegister(privateLinkage->getIntegerArgumentRegister(intArgNum)));
-                        log->printf(", %d(,", offset);
-                        debug->print(log, stackPtr);
-                        log->printc(')');
-                        bufferPos += 4;
+                        bufferPos = printRXInstruction(log, debug, TR::InstOpCode::ST, machine->getRealRegister(privateLinkage->getIntegerArgumentRegister(intArgNum)), stackPtr, offset, bufferPos, 4);
 
                         if (intArgNum < privateLinkage->getNumIntegerArgumentRegisters() - 1) {
-                            debug->printPrefix(log, NULL, bufferPos, 4);
-                            log->prints("ST   \t");
-
-                            debug->print(log,
-                                machine->getRealRegister(privateLinkage->getIntegerArgumentRegister(intArgNum + 1)));
-                            log->printf(",%d(,", offset + 4);
-                            debug->print(log, stackPtr);
-                            log->printc(')');
-                            bufferPos += 4;
+                            bufferPos = printRXInstruction(log, debug, TR::InstOpCode::ST, machine->getRealRegister(privateLinkage->getIntegerArgumentRegister(intArgNum + 1)), stackPtr, offset, bufferPos, 4);
                         }
                     }
                 }
@@ -369,13 +331,7 @@ uint8_t *TR::S390CallSnippet::printS390ArgumentsFlush(OMR::Logger *log, TR::Node
                     offset -= 4;
                 }
                 if (floatArgNum < privateLinkage->getNumFloatArgumentRegisters()) {
-                    debug->printPrefix(log, NULL, bufferPos, 4);
-                    log->prints("STD   \t");
-                    debug->print(log, machine->getRealRegister(privateLinkage->getFloatArgumentRegister(floatArgNum)));
-                    log->printf(",%d(,", offset);
-                    debug->print(log, stackPtr);
-                    log->printc(')');
-                    bufferPos += 4;
+                    bufferPos = printRXInstruction(log, debug, TR::InstOpCode::STD, machine->getRealRegister(privateLinkage->getFloatArgumentRegister(floatArgNum)), stackPtr, offset, bufferPos, 4);
                 }
                 floatArgNum++;
                 if (privateLinkage->getRightToLeft()) {
@@ -388,13 +344,7 @@ uint8_t *TR::S390CallSnippet::printS390ArgumentsFlush(OMR::Logger *log, TR::Node
                     offset -= 8;
                 }
                 if (floatArgNum < privateLinkage->getNumFloatArgumentRegisters()) {
-                    debug->printPrefix(log, NULL, bufferPos, 4);
-                    log->prints("STE  \t");
-                    debug->print(log, machine->getRealRegister(privateLinkage->getFloatArgumentRegister(floatArgNum)));
-                    log->printf(",%d(,", offset);
-                    debug->print(log, stackPtr);
-                    log->printc(')');
-                    bufferPos += 4;
+                    bufferPos = printRXInstruction(log, debug, TR::InstOpCode::STE, machine->getRealRegister(privateLinkage->getFloatArgumentRegister(floatArgNum)), stackPtr, offset, bufferPos, 4);
                 }
                 floatArgNum++;
                 if (privateLinkage->getRightToLeft()) {
@@ -422,7 +372,7 @@ uint8_t *TR::S390CallSnippet::emitSnippetBody()
 
 uint32_t TR::S390CallSnippet::getLength(int32_t estimatedSnippetStart) { return 0; }
 
-void TR::S390CallSnippet::printRXInstruction(OMR::Logger *log, TR_Debug *debug, TR::InstOpCode::Mnemonic opcode, TR::RealRegister *targetReg, TR::RealRegister *baseReg, int32_t offset, uint8_t *cursor, uint8_t instrSize)
+uint8_t *TR::S390CallSnippet::printRXInstruction(OMR::Logger *log, TR_Debug *debug, TR::InstOpCode::Mnemonic opcode, TR::RealRegister *targetReg, TR::RealRegister *baseReg, int32_t offset, uint8_t *cursor, uint8_t instrSize)
 {
     debug->printPrefix(log, NULL, cursor, instrSize);
     const char* mnemonicName = TR::InstOpCode::metadata[opcode].name;
@@ -432,5 +382,6 @@ void TR::S390CallSnippet::printRXInstruction(OMR::Logger *log, TR_Debug *debug, 
     debug->print(log, baseReg);
     log->printc(')');
     cursor += instrSize;
+    return cursor;
 }
 

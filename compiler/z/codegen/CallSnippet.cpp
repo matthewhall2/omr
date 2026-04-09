@@ -374,9 +374,7 @@ uint32_t TR::S390CallSnippet::getLength(int32_t estimatedSnippetStart) { return 
 
 uint8_t *TR::S390CallSnippet::printRXInstruction(OMR::Logger *log, TR_Debug *debug, TR::InstOpCode::Mnemonic opcode, TR::RealRegister *targetReg, TR::RealRegister *baseReg, int32_t offset, uint8_t *cursor, uint8_t instrSize)
 {
-    debug->printPrefix(log, NULL, cursor, instrSize);
-    const char* mnemonicName = TR::InstOpCode::metadata[opcode].name;
-    log->printf("%-*s", OPCODE_SPACING, mnemonicName);
+    printOpcode(log, debug, opcode, cursor, instrSize);
     debug->print(log, targetReg);
     log->printf(",%d(,", offset);
     debug->print(log, baseReg);
@@ -384,4 +382,24 @@ uint8_t *TR::S390CallSnippet::printRXInstruction(OMR::Logger *log, TR_Debug *deb
     cursor += instrSize;
     return cursor;
 }
+
+uint8_t *TR::S390CallSnippet::printRRInstruction(OMR::Logger *log, TR_Debug *debug, TR::InstOpCode::Mnemonic opcode, TR::RealRegister *targetReg, TR::RealRegister *srcReg, uint8_t *cursor, uint8_t instrSize)
+{
+    printOpcode(log, debug, opcode, cursor, instrSize);
+    debug->print(log, targetReg);
+    log->printc(',');
+    debug->print(log, srcReg);
+    cursor += instrSize;
+    return cursor;
+}
+
+void TR::S390CallSnippet::printOpcode(OMR::Logger *log, TR_Debug *debug, TR::InstOpCode::Mnemonic opcode, uint8_t *cursor, uint8_t instrSize)
+{
+    debug->printPrefix(log, NULL, cursor, instrSize);
+    const char* mnemonicName = TR::InstOpCode::metadata[opcode].name;
+    log->printf("%-*s", OPCODE_SPACING, mnemonicName);
+}
+
+
+
 

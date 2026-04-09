@@ -114,9 +114,14 @@ public:
         TR_Debug *debug, int32_t argStart, TR::Machine *machine, TR::Linkage *privateLinkage);
 
     /*
-     * prints a RX instruction given (for snippet debug logging). Updates the cursor.
+     * prints a RX instruction given (for snippet debug logging).
      */
     static uint8_t *printRXInstruction(OMR::Logger *log, TR_Debug *debug, TR::InstOpCode::Mnemonic opcode, TR::RealRegister *targetReg, TR::RealRegister *baseReg, int32_t offset, uint8_t *cursor, uint8_t instrSize);
+
+    static uint8_t *printRRInstruction(OMR::Logger *log, TR_Debug *debug, TR::InstOpCode::Mnemonic opcode, TR::RealRegister *targetReg, TR::RealRegister *srcReg, uint8_t *cursor, uint8_t instrSize);
+
+private:
+    inline static void printOpcode(OMR::Logger *log, TR_Debug *debug, TR::InstOpCode::Mnemonic opcode, uint8_t *cursor, uint8_t instrSize);
 };
 
 } // namespace TR

@@ -325,21 +325,23 @@ bool OMR::TreeEvaluator::instanceOfOrCheckCastNeedSuperTest(TR::Node *node, TR::
     TR::MethodSymbol *helperSym = node->getSymbol()->castToMethodSymbol();
     TR::SymbolReference *castClassSymRef = castClassNode->getSymbolReference();
 
+
     if (!TR::TreeEvaluator::isStaticClassSymRef(castClassSymRef)) {
         // We could theoretically do a super test on something with no sym, but it would require significant
         // changes to platform code. The benefit is little at this point (shows up from reference arraycopy reductions)
-
-        if (cg->supportsInliningOfIsInstance() && node->getOpCodeValue() == TR:: instanceof
-            && node->getSecondChild()->getOpCodeValue() != TR::loadaddr)
-            return true;
-        else
-            return false;
+       // return cg->supportsInlineInstanceOfForDynamicCastClass();
+        return helperSym->preservesAllRegisters();
+        // if (cg->supportsInliningOfIsInstance() && node->getOpCodeValue() == TR:: instanceof
+        //     && node->getSecondChild()->getOpCodeValue() != TR::loadaddr)
+        //     return true;
+        // else
+        //     return false;
     }
 
     TR::StaticSymbol *castClassSym = castClassSymRef->getSymbol()->getStaticSymbol();
 
     if (castClassSymRef->isUnresolved()) {
-        return false;
+        return helperSym->preservesAllRegisters();
     } else {
         TR_OpaqueClassBlock *clazz;
         // If the class is a regular class (i.e., not an interface nor an array) and
@@ -353,6 +355,13 @@ bool OMR::TreeEvaluator::instanceOfOrCheckCastNeedSuperTest(TR::Node *node, TR::
             && !TR::Compiler->cls.isInterfaceClass(cg->comp(), clazz)
             && !TR::Compiler->cls.isClassFinal(cg->comp(), clazz) && helperSym->preservesAllRegisters())
             return true;
+
+        if (castClassSym && (clazz = (TR_OpaqueClassBlock *)castClassSym->getStaticAddress())
+            && !TR::Compiler->cls.isInterfaceClass(cg->comp(), clazz))
+            return helperSym->preservesAllRegisters();
+
+        
+
     }
     return false;
 }

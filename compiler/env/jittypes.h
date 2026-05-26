@@ -107,7 +107,7 @@ private:
     uint32_t _doNotProfile: 1;
     uint32_t _isSameReceiver: 1; /* check whether callee has the same receiver as the caller */
     int32_t _callerIndex: 13; /* index into TR_InlinedCallSite array.  -1 implies outermost function */
-    int32_t _byteCodeIndex: 17; /* should not be less than jitConfig->bcSizeLimit, currently is 64k (16 bits) */
+    uint32_t _byteCodeIndex: 17; /* should not be less than jitConfig->bcSizeLimit, currently is 64k (16 bits) */
 
 } TR_ByteCodeInfo;
 

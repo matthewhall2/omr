@@ -7126,7 +7126,7 @@ OPCODE_MACRO(\
 OPCODE_MACRO(\
    /* .opcode               = */ arraytranslate, \
    /* .name                 = */ "arraytranslate", \
-   /* .properties1          = */ ILProp1::Call | ILProp1::HasSymbolRef, \
+   /* .properties1          = */ ILProp1::Call | ILProp1::HasSymbolRef | ILProp1::TreeTop, \
    /* .properties2          = */ 0, \
    /* .properties3          = */ ILProp3::LikeUse | ILProp3::LikeDef, \
    /* .properties4          = */ 0, \
@@ -7142,7 +7142,7 @@ OPCODE_MACRO(\
 OPCODE_MACRO(\
    /* .opcode               = */ arraytranslateAndTest, \
    /* .name                 = */ "arraytranslateAndTest", \
-   /* .properties1          = */ ILProp1::Call | ILProp1::HasSymbolRef, \
+   /* .properties1          = */ ILProp1::Call | ILProp1::HasSymbolRef | ILProp1::TreeTop, \
    /* .properties2          = */ ILProp2::CanRaiseException | ILProp2::BndCheck, \
    /* .properties3          = */ ILProp3::LikeUse | ILProp3::LikeDef, \
    /* .properties4          = */ 0, \

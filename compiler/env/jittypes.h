@@ -38,8 +38,19 @@
 #define MAX_UINTPTR (~(uintptr_t)0)
 
 #ifdef __cplusplus
+extern "C" {
+#endif
+char *feGetEnv(const char *);
+
+#ifdef __cplusplus
+}
+#endif
+
+#ifdef __cplusplus
 namespace TR {
 class Compilation;
+
+void debugReportBadBytecodeIndex(int32_t i);
 }
 
 /// This data type exists to refer class data which TR knows exists,
@@ -89,9 +100,17 @@ typedef struct TR_ByteCodeInfo {
 
     bool isInvalidCallerIndex() { return getCallerIndex() == invalidCallerIndex; }
 
-    void setByteCodeIndex(int32_t i) { _byteCodeIndex = i; }
 
-    int32_t getByteCodeIndex() const { return _byteCodeIndex; }
+
+    void setByteCodeIndex(uint32_t i) { 
+        //     static bool checkBCI = feGetEnv("checkBCI") != NULL;
+        // if (checkBCI && (i < -1 || i > 0xFFFF)) {
+        //     TR::debugReportBadBytecodeIndex(i);
+        // }
+        _byteCodeIndex = i;
+        }
+
+    uint32_t getByteCodeIndex() const { return _byteCodeIndex; }
 
     void setCallerIndex(int16_t i) { _callerIndex = i; }
 

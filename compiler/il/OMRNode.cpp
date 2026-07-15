@@ -3630,9 +3630,21 @@ void OMR::Node::setFlags(flags32_t f)
     self()->setHasNodeExtension(nodeExtensionExists);
 }
 
+namespace TR {
+    void debugReportBadBytecodeIndex(int32_t i) {
+        printf("out of range bc %d\n", i);
+       // TR_ASSERT_FATAL(false, "bci written out of range: %d (0x%08x)", i, (uint32_t)i);
+    }
+}
+
 void OMR::Node::setByteCodeInfo(const TR_ByteCodeInfo &bcInfo)
 {
     _byteCodeInfo = bcInfo;
+  //  int32_t dbgBcIndex = _byteCodeInfo.getByteCodeIndex();
+  //  static bool checkBCI = feGetEnv("checkBCI") != NULL;
+    
+ //   if (checkBCI && (dbgBcIndex < -1 || dbgBcIndex > 0xFFFF))
+   //     TR::debugReportBadBytecodeIndex(dbgBcIndex);
     if (!TR::comp()->getCurrentIlGenerator())
         _byteCodeInfo.setDoNotProfile(1);
 }

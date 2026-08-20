@@ -2823,7 +2823,7 @@ void TR_HandleInjectedBasicBlock::collectNodesWithMultipleReferences(TR::TreeTop
     TR::TreeTop *start, TR::TreeTop *end)
 {
    // TR_ASSERT_FATAL(_multiplyReferencedNodes.getFirst() == NULL, "unexpected live nodes");
-    TR_ASSERT_FATAL_WITH_NODE(_multiplyReferencedNodes.getFirst(), _multiplyReferencedNodes.getFirst() == NULL, "unexpected live nodes");
+    TR_ASSERT_FATAL_WITH_NODE(_multiplyReferencedNodes.getFirst()->_node, _multiplyReferencedNodes.getFirst() == NULL, "unexpected live nodes");
 
     // Ensure there will be no PassThroughs in _multiplyReferencedNodes.
     // The logic that generates the stores and loads is not prepared to

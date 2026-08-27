@@ -2084,6 +2084,20 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                 }
                 node->setIsNonNull(true);
             }
+        } else if (base && base->isJ9ClassObject() == TR_yes && base->isNonNullObject() && base->getClassType()
+            && base->getClassType()->asResolvedClass() && base->getClass()
+            && (!needInitializedCheck || TR::Compiler->cls.isClassInitialized(vp->comp(), base->getClass()))
+            && symRef == vp->comp()->getSymRefTab()->findJavaLangClassFromClassSymbolRef()) {
+            // The base has a resolved (but not fixed) class type — we still know the exact
+            // java/lang/Class object because j9class->javaLangClass is uniquely determined by
+            // the class.  Attach a VPResolvedClass-typed JavaLangClassObject constraint so that
+            // VP's isAssignableFrom handler can fold the check via isInstanceOf.
+            vp->addBlockOrGlobalConstraint(node,
+                TR::VPClass::create(vp, TR::VPResolvedClass::create(vp, base->getClass()),
+                    TR::VPNonNullObject::create(vp), NULL, NULL,
+                    TR::VPObjectLocation::create(vp, TR::VPObjectLocation::JavaLangClassObject)),
+                isGlobal);
+            node->setIsNonNull(true);
         } else if (symRef == vp->comp()->getSymRefTab()->findJavaLangClassFromClassSymbolRef()) {
             vp->addGlobalConstraint(node, TR::VPObjectLocation::create(vp, TR::VPObjectLocation::JavaLangClassObject));
             vp->addGlobalConstraint(node, TR::VPNonNullObject::create(vp));

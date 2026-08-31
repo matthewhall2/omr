@@ -1743,7 +1743,6 @@ TR::Node *constrainAload(OMR::ValuePropagation *vp, TR::Node *node)
         }
     }
 
-#ifdef J9_PROJECT_SPECIFIC
     // If this parm load is inside an inlined call body, and the caller propagated
     // a more specific class for this slot via prex arg info, add a block constraint
     // so VP sees the refined type rather than the broad declared type.

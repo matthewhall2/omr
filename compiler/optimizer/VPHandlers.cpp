@@ -1770,9 +1770,36 @@ TR::Node *constrainAload(OMR::ValuePropagation *vp, TR::Node *node)
                             TR::Compiler->cls.classSignature(vp->comp(), argClass, vp->trMemory()),
                             vp->comp()->getMethodSymbol()->getResolvedMethod()->signature(vp->trMemory()));
                         vp->addBlockConstraint(node, TR::VPResolvedClass::create(vp, argClass));
+                    } else {
+                        logprintf(vp->trace(), vp->comp()->log(),
+                            "constrainAload: cannot refine parm %d in %s:"
+                            " argClass=%p declaredClass=%p same=%d isInstanceOf=%d\n",
+                            slot,
+                            vp->comp()->getMethodSymbol()->getResolvedMethod()->signature(vp->trMemory()),
+                            argClass, declaredClass,
+                            (argClass == declaredClass) ? 1 : 0,
+                            declaredClass
+                                ? (int)vp->fe()->isInstanceOf(argClass, declaredClass, true, true, false)
+                                : -1);
                     }
+                } else {
+                    logprintf(vp->trace(), vp->comp()->log(),
+                        "constrainAload: cannot refine parm %d in %s: no argClass (prexArg=%p)\n",
+                        slot,
+                        vp->comp()->getMethodSymbol()->getResolvedMethod()->signature(vp->trMemory()),
+                        prexArg);
                 }
+            } else {
+                logprintf(vp->trace(), vp->comp()->log(),
+                    "constrainAload: cannot refine parm %d in %s: slot >= numArgs (%d)\n",
+                    slot,
+                    vp->comp()->getMethodSymbol()->getResolvedMethod()->signature(vp->trMemory()),
+                    inlinedArgInfo->getNumArgs());
             }
+        } else {
+            logprintf(vp->trace(), vp->comp()->log(),
+                "constrainAload: cannot refine parm in %s: no inlinedArgInfo\n",
+                vp->comp()->getMethodSymbol()->getResolvedMethod()->signature(vp->trMemory()));
         }
     }
 #endif

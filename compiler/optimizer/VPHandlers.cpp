@@ -1743,65 +1743,6 @@ TR::Node *constrainAload(OMR::ValuePropagation *vp, TR::Node *node)
         }
     }
 
-    // If this parm load is inside an inlined call body, and the caller propagated
-    // a more specific class for this slot via prex arg info, add a block constraint
-    // so VP sees the refined type rather than the broad declared type.
-    if (symRef && symRef->getSymbol()->isParm()) {
-        TR_PrexArgInfo *inlinedArgInfo = vp->comp()->getCurrentInlinedCallArgInfo();
-        if (inlinedArgInfo) {
-            int32_t slot = symRef->getSymbol()->getParmSymbol()->getOrdinal();
-            if (slot < inlinedArgInfo->getNumArgs()) {
-                TR_PrexArgument *prexArg = inlinedArgInfo->get(slot);
-                TR_OpaqueClassBlock *argClass = prexArg ? prexArg->getClass() : NULL;
-                if (argClass) {
-                    int32_t sigLen = 0;
-                    const char *sig = symRef->getTypeSignature(sigLen);
-                    TR_OpaqueClassBlock *declaredClass = sig
-                        ? vp->fe()->getClassFromSignature(sig, sigLen, symRef->getOwningMethod(vp->comp()))
-                        : NULL;
-                    // Only refine when argClass is a proper subtype of the declared type —
-                    // i.e. strictly more specific and verifiably compatible.
-                    if (declaredClass && argClass != declaredClass
-                        && vp->fe()->isInstanceOf(argClass, declaredClass, true, true, false) == TR_yes) {
-                        logprintf(vp->trace(), vp->comp()->log(),
-                            "constrainAload: refining parm %d from %s to %s in %s\n",
-                            slot,
-                            TR::Compiler->cls.classSignature(vp->comp(), declaredClass, vp->trMemory()),
-                            TR::Compiler->cls.classSignature(vp->comp(), argClass, vp->trMemory()),
-                            vp->comp()->getMethodSymbol()->getResolvedMethod()->signature(vp->trMemory()));
-                        vp->addBlockConstraint(node, TR::VPResolvedClass::create(vp, argClass));
-                    } else {
-                        logprintf(vp->trace(), vp->comp()->log(),
-                            "constrainAload: cannot refine parm %d in %s:"
-                            " argClass=%p declaredClass=%p same=%d isInstanceOf=%d\n",
-                            slot,
-                            vp->comp()->getMethodSymbol()->getResolvedMethod()->signature(vp->trMemory()),
-                            argClass, declaredClass,
-                            (argClass == declaredClass) ? 1 : 0,
-                            declaredClass
-                                ? (int)vp->fe()->isInstanceOf(argClass, declaredClass, true, true, false)
-                                : -1);
-                    }
-                } else {
-                    logprintf(vp->trace(), vp->comp()->log(),
-                        "constrainAload: cannot refine parm %d in %s: no argClass (prexArg=%p)\n",
-                        slot,
-                        vp->comp()->getMethodSymbol()->getResolvedMethod()->signature(vp->trMemory()),
-                        prexArg);
-                }
-            } else {
-                logprintf(vp->trace(), vp->comp()->log(),
-                    "constrainAload: cannot refine parm %d in %s: slot >= numArgs (%d)\n",
-                    slot,
-                    vp->comp()->getMethodSymbol()->getResolvedMethod()->signature(vp->trMemory()),
-                    inlinedArgInfo->getNumArgs());
-            }
-        } else {
-            logprintf(vp->trace(), vp->comp()->log(),
-                "constrainAload: cannot refine parm in %s: no inlinedArgInfo\n",
-                vp->comp()->getMethodSymbol()->getResolvedMethod()->signature(vp->trMemory()));
-        }
-    }
 #endif
 
     if (node->isNonNull())

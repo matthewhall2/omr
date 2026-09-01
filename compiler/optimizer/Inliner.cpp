@@ -2228,6 +2228,18 @@ void TR_ParameterToArgumentMapper::initialize(TR_CallStack *callStack)
                         debugTrace(tracer(), "map arg %p into known object temp #%d as priv arg\n", arg,
                             symRef->getReferenceNumber());
                     }
+                    // Stamp fixed/preexistent type onto the callee parm symbol so that VP's
+                    // mergeDefConstraints can recover the stronger type from prex arg info
+                    // at the method-entry def point, even when _parmValues is null for an
+                    // inlined callee.  This mirrors what getParmValues() does for the
+                    // outermost method.
+                    if (prexArgument && !parmMap->_parmIsModified
+                        && arg->getDataType() == TR::Address) {
+                        if (prexArgument->classIsFixed() && prexArgument->getClass())
+                            parmMap->_parmSymbol->setFixedType(prexArgument->getClass());
+                        else if (prexArgument->classIsPreexistent() && prexArgument->getClass())
+                            parmMap->_parmSymbol->setIsPreexistent(true);
+                    }
 
                     tt = OMR_InlinerUtil::storeValueInATemp(comp(), arg, symRef, 0, _calleeSymbol, _tempList,
                         _availableTemps, &_availableTemps2, false, &newValueStoreTreeTop);

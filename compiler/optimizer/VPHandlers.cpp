@@ -2086,6 +2086,19 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                 }
                 node->setIsNonNull(true);
             }
+        } else if (base && base->isJ9ClassObject() == TR_yes && base->isNonNullObject() && base->getClassType()
+            && base->getClassType()->asResolvedClass() && base->getClass()
+            && symRef == vp->comp()->getSymRefTab()->findJavaLangClassFromClassSymbolRef()) {
+            // Base has a resolved (but not fixed) type — we can't assign a known object
+            // index since the runtime type may be a subclass, but we can still carry the
+            // resolved class through so that callers such as Class.isAssignableFrom can
+            // reason about it (via the asResolvedClass() branch).
+            vp->addBlockOrGlobalConstraint(node,
+                TR::VPClass::create(vp, TR::VPResolvedClass::create(vp, base->getClass()),
+                    TR::VPNonNullObject::create(vp), NULL, NULL,
+                    TR::VPObjectLocation::create(vp, TR::VPObjectLocation::JavaLangClassObject)),
+                isGlobal);
+            node->setIsNonNull(true);
         } else if (symRef == vp->comp()->getSymRefTab()->findJavaLangClassFromClassSymbolRef()) {
             vp->addGlobalConstraint(node, TR::VPObjectLocation::create(vp, TR::VPObjectLocation::JavaLangClassObject));
             vp->addGlobalConstraint(node, TR::VPNonNullObject::create(vp));

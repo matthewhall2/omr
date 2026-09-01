@@ -1934,33 +1934,26 @@ TR::VPConstraint *OMR::ValuePropagation::mergeDefConstraints(TR::Node *node, int
                     }
 #ifdef J9_PROJECT_SPECIFIC
                     // For inlined callees _parmValues is null.  The inliner stamps
-                    // setFixedType / setIsPreexistent on the callee parm symbol when it
-                    // has prex arg info, mirroring what getParmValues() does for the
-                    // outermost method.  Read those flags here to synthesize the
+                    // setFixedType / setPreexistentType on the callee parm symbol when
+                    // it has prex arg info.  Read those here to synthesize the
                     // equivalent entry constraint.
                     else if (node->getDataType() == TR::Address) {
                         TR::ParameterSymbol *parmSym = symRef->getSymbol()->getParmSymbol();
                         TR_J9VMBase *fej9 = (TR_J9VMBase *)comp()->fe();
                         TR::VPConstraint *typeConstraint = NULL;
+                        TR_OpaqueClassBlock *prexClazz = NULL;
                         if (parmSym->getFixedType()) {
                             TR_OpaqueClassBlock *clazz = (TR_OpaqueClassBlock *)parmSym->getFixedType();
                             typeConstraint = TR::VPFixedClass::create(this, clazz);
-                        } else if (parmSym->getIsPreexistent()) {
-                            // The parm symbol's type signature is the declared type (e.g.
-                            // Ljava/lang/Object;), not the propagated type.  Fall back to
-                            // getCurrentInlinedCallArgInfo() to get the actual class.
-                            TR_PrexArgInfo *argInfo = comp()->getCurrentInlinedCallArgInfo();
-                            TR_PrexArgument *prexArg = (argInfo && parmNum < argInfo->getNumArgs())
-                                ? argInfo->get(parmNum) : NULL;
-                            if (prexArg && prexArg->getClass()) {
-                                TR_OpaqueClassBlock *clazz = prexArg->getClass();
-                                typeConstraint = fej9->classHasBeenExtended(clazz)
-                                    ? TR::VPResolvedClass::create(this, clazz)
-                                    : TR::VPFixedClass::create(this, clazz);
-                            }
+                            prexClazz = clazz;
+                        } else if (parmSym->getPreexistentType()) {
+                            TR_OpaqueClassBlock *clazz = (TR_OpaqueClassBlock *)parmSym->getPreexistentType();
+                            typeConstraint = fej9->classHasBeenExtended(clazz)
+                                ? TR::VPResolvedClass::create(this, clazz)
+                                : TR::VPFixedClass::create(this, clazz);
+                            prexClazz = clazz;
                         }
                         if (typeConstraint) {
-                            TR_OpaqueClassBlock *prexClazz = typeConstraint->getClass();
                             defConstraint = TR::VPClass::create(this,
                                 (TR::VPClassType *)typeConstraint, NULL,
                                 TR::VPPreexistentObject::create(this, prexClazz),

@@ -119,6 +119,15 @@ public:
 
     void setIsPreexistent(bool t) { _isPreexistent = t; }
 
+    // The propagated class for a preexistent (but not necessarily fixed) parameter.
+    // Unlike _fixedType, this does not assert the exact runtime type — the object may
+    // be an instance of a subclass.  Set by the inliner when it has ClassIsPreexistent
+    // arg info for a callee parameter; read by VP to synthesize a VPResolvedClass or
+    // VPFixedClass entry constraint at the method-entry def point.
+    void *getPreexistentType() { return _preexistentType; }
+
+    void setPreexistentType(void *t) { _preexistentType = t; }
+
     bool hasKnownObjectIndex() { return _knownObjectIndex != TR::KnownObjectTable::UNKNOWN; }
 
     void setKnownObjectIndex(TR::KnownObjectTable::Index i) { _knownObjectIndex = i; }
@@ -140,6 +149,7 @@ public:
 private:
     const char *_typeSignature;
     void *_fixedType;
+    void *_preexistentType;
     int32_t _typeLength;
     int32_t _ordinal;
     int8_t _registerIndex;

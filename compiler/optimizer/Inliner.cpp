@@ -2203,6 +2203,22 @@ void TR_ParameterToArgumentMapper::initialize(TR_CallStack *callStack)
                 }
             }
 
+            // Stamp the propagated class onto the callee parm symbol so that VP's
+            // mergeDefConstraints can recover the stronger type at the method-entry def
+            // point, even when _parmValues is null for an inlined callee.  Done here
+            // (after the _replacementSymRef / new-temp decision) so it fires on both
+            // the symref-reuse path and the new-temp path.
+            if (!parmMap->_parmIsModified && arg->getDataType() == TR::Address) {
+                int argOrdinal2 = argIndex - _callNode->getFirstArgumentIndex();
+                TR_PrexArgument *prexArg2 = _argInfo ? _argInfo->get(argOrdinal2) : NULL;
+                if (prexArg2 && prexArg2->getClass()) {
+                    if (prexArg2->classIsFixed() && !parmMap->_parmSymbol->getFixedType())
+                        parmMap->_parmSymbol->setFixedType(prexArg2->getClass());
+                    else if (prexArg2->classIsPreexistent() && !parmMap->_parmSymbol->getPreexistentType())
+                        parmMap->_parmSymbol->setPreexistentType(prexArg2->getClass());
+                }
+            }
+
             // tries to put inreg parameters into correct register
             TR::TreeTop *tt = NULL;
             TR::TreeTop *tt2 = NULL;
@@ -2228,19 +2244,6 @@ void TR_ParameterToArgumentMapper::initialize(TR_CallStack *callStack)
                         debugTrace(tracer(), "map arg %p into known object temp #%d as priv arg\n", arg,
                             symRef->getReferenceNumber());
                     }
-                    // Stamp fixed/preexistent type onto the callee parm symbol so that VP's
-                    // mergeDefConstraints can recover the stronger type from prex arg info
-                    // at the method-entry def point, even when _parmValues is null for an
-                    // inlined callee.  This mirrors what getParmValues() does for the
-                    // outermost method.
-                    if (prexArgument && !parmMap->_parmIsModified
-                        && arg->getDataType() == TR::Address) {
-                        if (prexArgument->classIsFixed() && prexArgument->getClass())
-                            parmMap->_parmSymbol->setFixedType(prexArgument->getClass());
-                        else if (prexArgument->classIsPreexistent() && prexArgument->getClass())
-                            parmMap->_parmSymbol->setIsPreexistent(true);
-                    }
-
                     tt = OMR_InlinerUtil::storeValueInATemp(comp(), arg, symRef, 0, _calleeSymbol, _tempList,
                         _availableTemps, &_availableTemps2, false, &newValueStoreTreeTop);
                     symRef->getSymbol()->setBehaveLikeNonTemp();

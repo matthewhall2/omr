@@ -3558,7 +3558,17 @@ int32_t TR::GlobalValuePropagation::perform()
     setIntersectionFailed(false);
 
     getParmValues();
-    determineConstraints();
+    optimizer()->setInGVPWalk(true);
+    try
+        {
+        determineConstraints();
+        }
+    catch (...)
+        {
+        optimizer()->setInGVPWalk(false);
+        throw;
+        }
+    optimizer()->setInGVPWalk(false);
 
     // If there are deep chains of value numbers related to each other
     // disable future passes of value propagation
@@ -6606,6 +6616,53 @@ bool OMR::ValuePropagation::canClassBeTrustedAsFixedClass(TR::SymbolReference *s
 void OMR::ValuePropagation::doDelayedTransformations()
 {
     OMR::Logger *log = comp()->log();
+
+    // Remove awrtbari treetops whose values were fully forwarded to all
+    // consuming aloadi nodes.  Done here (after the use-def assertion check
+    // in GVP::perform) so that prepareForNodeRemoval cannot fire
+    // setUseDefInfo(NULL) and trip that assertion.
+    {
+    ListIterator<TR::TreeTop> fwdIt(&_forwardedStoreTreesToRemove);
+    for (TR::TreeTop *storeTT = fwdIt.getFirst(); storeTT; storeTT = fwdIt.getNext())
+        {
+        if (trace())
+            logprintf(trace(), log,
+                "VP ARRAY FORWARD:   (delayed) removing forwarded store treetop n%dn\n",
+                storeTT->getNode() ? storeTT->getNode()->getGlobalIndex() : -1);
+        removeNode(storeTT->getNode(), false);
+        TR::TransformUtil::removeTree(comp(), storeTT);
+        }
+    _forwardedStoreTreesToRemove.deleteAll();
+    }
+
+    // Execute deferred in-place morphs for shared (rc > 1) aloadi nodes that
+    // were forwarded to a known stored value during the GVP walk.  Done here
+    // (after _inGVPWalk is cleared and the use-def assertion in GVP::perform
+    // has passed) so that removeChildren cannot call setUseDefInfo(NULL) while
+    // GVP's cached use-def pointer is still live.
+    {
+    ListIterator<TR_Pair<TR::Node, TR::Node>> morphIt(&_pendingAlloadiMorphs);
+    for (TR_Pair<TR::Node, TR::Node> *p = morphIt.getFirst(); p; p = morphIt.getNext())
+        {
+        TR::Node *load        = p->getKey();
+        TR::Node *storedValue = p->getValue();
+        removeChildren(load);
+        if (storedValue->getOpCode().hasSymbolReference())
+            TR::Node::recreateWithSymRef(load, storedValue->getOpCodeValue(),
+                                        storedValue->getSymbolReference());
+        else
+            TR::Node::recreate(load, storedValue->getOpCodeValue());
+        invalidateUseDefInfo();
+        invalidateValueNumberInfo();
+        if (trace())
+            logprintf(trace(), log,
+                "VP ARRAY FORWARD:   (delayed) morphed shared aloadi n%dn in-place to %s\n",
+                load->getGlobalIndex(),
+                storedValue->getOpCode().getName());
+        }
+    _pendingAlloadiMorphs.deleteAll();
+    }
+
     ListIterator<TR_TreeTopNodePair> treesIt1(&_scalarizedArrayCopies);
     TR_TreeTopNodePair *scalarizedArrayCopy;
     for (scalarizedArrayCopy = treesIt1.getFirst(); scalarizedArrayCopy; scalarizedArrayCopy = treesIt1.getNext()) {

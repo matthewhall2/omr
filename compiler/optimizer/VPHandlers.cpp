@@ -1863,6 +1863,235 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
     if (refineUnsafeAccess(vp, node))
         return node;
 
+    // Array store-to-load forwarding
+    if (vp->_isGlobalPropagation
+        && node->getOpCode().hasSymbolReference()
+        && node->getSymbol()->isArrayShadowSymbol())
+        {
+        if (!node->getFirstChild()->getOpCode().isArrayRef())
+            {
+            if (vp->trace())
+                logprintf(vp->trace(), vp->comp()->log(),
+                    "VP ARRAY FORWARD: skip aloadi n%dn: addr child %s n%dn is not arrayref\n",
+                    node->getGlobalIndex(),
+                    node->getFirstChild()->getOpCode().getName(),
+                    node->getFirstChild()->getGlobalIndex());
+            }
+        else
+        {
+        TR::Node *loadAddr   = node->getFirstChild(); // aladd/aiadd
+        TR::Node *baseNode   = loadAddr->getFirstChild();
+        TR::Node *offsetNode = loadAddr->getSecondChild();
+
+        if (vp->trace())
+            {
+            OMR::Logger *log = vp->comp()->log();
+            logprintf(vp->trace(), log,
+                "VP ARRAY FORWARD: considering aloadi n%dn [" POINTER_PRINTF_FORMAT "]\n",
+                node->getGlobalIndex(), node);
+            vp->comp()->getDebug()->print(log, vp->_curTree);
+            }
+
+        // Offset must be a constant.
+        if (!offsetNode->getOpCode().isLoadConst())
+            {
+            if (vp->trace())
+                logprintf(vp->trace(), vp->comp()->log(),
+                    "VP ARRAY FORWARD:   skip aloadi n%dn: non-constant offset\n",
+                    node->getGlobalIndex());
+            }
+        else
+            {
+            int64_t offset = offsetNode->getOpCode().isLong()
+                ? offsetNode->getLongInt()
+                : (int64_t)offsetNode->getInt();
+
+            uint64_t key = ((uint64_t)(uint32_t)vp->getValueNumber(baseNode) << 32)
+                           | (uint64_t)(uint32_t)offset;
+            if (vp->trace())
+                logprintf(vp->trace(), vp->comp()->log(),
+                    "VP ARRAY FORWARD:   load base n%dn VN=%d, key=0x%llx\n",
+                    baseNode->getGlobalIndex(), vp->getValueNumber(baseNode), (unsigned long long)key);
+
+            {
+                CS2::HashIndex idx;
+                TR::Node *storedValue = NULL;
+                if (vp->_arrayShadowForwardingMap.Locate(key, idx))
+                    storedValue = vp->_arrayShadowForwardingMap[idx];
+
+                if (vp->trace())
+                    {
+                    OMR::Logger *log = vp->comp()->log();
+                    if (storedValue)
+                        logprintf(vp->trace(), log,
+                            "VP ARRAY FORWARD:   map hit [base VN=%d offset %lld] -> value n%dn\n",
+                            vp->getValueNumber(baseNode), (long long)offset,
+                            storedValue->getGlobalIndex());
+                    else
+                        logprintf(vp->trace(), log,
+                            "VP ARRAY FORWARD:   no map entry [base VN=%d offset %lld] for aloadi n%dn\n",
+                            vp->getValueNumber(baseNode), (long long)offset,
+                            node->getGlobalIndex());
+                    }
+
+                // On compressed-refs JVMs an array-shadow aloadi is anchored as
+                // child(0) of a compressedRefs treetop so the codegen knows to
+                // sign-extend the narrow oop.  If we forward here while the parent
+                // is compressedRefs we would put a full reference inside a node
+                // that expects a narrow one, corrupting the value.
+                //
+                // Skip the replacement for that visit but reset visitCount so that
+                // VP re-visits the aloadi from every other consumer (call args,
+                // etc.) where the parent is NOT compressedRefs — those visits will
+                // forward correctly with rc == 1.
+                TR::Node *curParent = vp->getCurrentParent();
+                if (storedValue != NULL
+                    && curParent != NULL
+                    && curParent->getOpCode().isNullCheck())
+                    {
+                    // The storedValue came from a non-escaping anewarray, so the
+                    // base pointer is provably non-null.  Convert the NULLCHK to a
+                    // treetop in-place (preserving its child subtree), then reset
+                    // the aloadi's visit count so it is forwarded on the next visit
+                    // as an ordinary treetop child.
+                    if (vp->trace())
+                        logprintf(vp->trace(), vp->comp()->log(),
+                            "VP ARRAY FORWARD:   removing NULLCHK n%dn: base is non-null anewarray, "
+                            "will forward aloadi n%dn at next visit\n",
+                            curParent->getGlobalIndex(),
+                            node->getGlobalIndex());
+                    TR::Node::recreate(curParent, TR::treetop);
+                    vp->setChecksRemoved();
+                    node->setVisitCount(0);
+                    }
+                else if (storedValue != NULL
+                    && curParent != NULL
+                    && curParent->getOpCodeValue() == TR::compressedRefs
+                    && node->getReferenceCount() > 1)
+                    {
+                    // The aloadi has other consumers beyond this compressedRefs anchor.
+                    // Reset visit count so those non-compressedRefs consumers each get
+                    // their own constrainAloadi call and forward there.
+                    // When rc==1 this anchor is the only consumer — fall through to the
+                    // forwarding path below and handle it directly.
+                    node->setVisitCount(0);
+                    if (vp->trace())
+                        logprintf(vp->trace(), vp->comp()->log(),
+                            "VP ARRAY FORWARD:   defer aloadi n%dn: parent is compressedRefs, rc=%d "
+                            "(will forward at direct consumer)\n",
+                            node->getGlobalIndex(),
+                            node->getReferenceCount());
+                    }
+                else if (storedValue != NULL
+                    // storedValue is always a leaf (aload of a parm, or aload of the
+                    // privatizing Auto temp we inserted during the store scan).  It is
+                    // safe to share across block boundaries.
+                    && storedValue->getNumChildren() == 0
+                    // Do not forward a null constant: if this aloadi is under a NULLCHK
+                    // (possibly via a different parent than curParent), replacing it with
+                    // aconst NULL would leave the NULLCHK with a leaf child and make
+                    // getNullCheckReference() return null, corrupting the tree.  The
+                    // always-throws case is better left to other passes.
+                    && !(storedValue->getOpCodeValue() == TR::aconst && storedValue->getAddress() == 0)
+                    && performTransformation(vp->comp(),
+                        "%sVP ARRAY FORWARD: replacing aloadi n%dn [" POINTER_PRINTF_FORMAT "] "
+                        "with forwarded value n%dn [" POINTER_PRINTF_FORMAT "]\n",
+                        OPT_DETAILS,
+                        node->getGlobalIndex(), node,
+                        storedValue->getGlobalIndex(), storedValue))
+                    {
+                    bool isGlobalFwd = false;
+                    TR::VPConstraint *fwdConstraint = vp->getConstraint(storedValue, isGlobalFwd);
+                    // Only propagate the constraint globally if it was itself established
+                    // as a global constraint at the store site.  A block-local constraint
+                    // is only valid in the block that contains the awrtbari; broadcasting
+                    // it via addGlobalConstraint to all subsequent GVP blocks can cause
+                    // checkcast/instanceof to be incorrectly eliminated in blocks where
+                    // the narrower type does not hold, yielding a bad object reference.
+                    if (fwdConstraint && isGlobalFwd)
+                        vp->addGlobalConstraint(node, fwdConstraint);
+
+                    // If this slot was written exactly once, mark its awrtbari treetop for
+                    // deferred removal (done in doDelayedTransformations, after the use-def
+                    // assertion check in GVP::perform).  Null the entry now so that a second
+                    // forwarded load from the same slot does not re-queue it.
+                    //
+                    // On compressed-refs JVMs a compressedRefs treetop immediately follows
+                    // the awrtbari's own treetop.  It wraps the same awrtbari node via
+                    // commoning and tells lowerCompressedRefs to compress the stored value.
+                    // Once the awrtbari is removed that anchor is dead and must also be
+                    // removed; otherwise compressedRefsEvaluator re-evaluates the deleted
+                    // awrtbari node.
+                    CS2::HashIndex storeTTIdx;
+                    if (vp->_arrayShadowStoreTTMap.Locate(key, storeTTIdx))
+                        {
+                        TR::TreeTop *storeTT = vp->_arrayShadowStoreTTMap[storeTTIdx];
+                        if (storeTT != NULL)
+                            {
+                            fprintf(stderr, "VP ARRAY FORWARD: removing store n%dn in method [%s] optLevel=%s\n",
+                                storeTT->getNode()->getGlobalIndex(), vp->comp()->signature(),
+                                vp->comp()->getHotnessName());
+                            fflush(stderr);
+                            if (vp->trace())
+                                logprintf(vp->trace(), vp->comp()->log(),
+                                    "VP ARRAY FORWARD:   queuing forwarded store treetop n%dn for removal\n",
+                                    storeTT->getNode()->getGlobalIndex());
+                            vp->_forwardedStoreTreesToRemove.add(storeTT);
+                            vp->_arrayShadowStoreTTMap[storeTTIdx] = NULL;
+
+                            // Check the immediately following treetop for the
+                            // compressedRefs anchor wrapping the same awrtbari node.
+                            if (vp->comp()->useCompressedPointers())
+                                {
+                                TR::TreeTop *nextTT = storeTT->getNextTreeTop();
+                                if (nextTT != NULL)
+                                    {
+                                    TR::Node *nextNode = nextTT->getNode();
+                                    TR::Node *storeNode = storeTT->getNode();
+                                    if (storeNode->getNumChildren() >= 1)
+                                        storeNode = storeNode->getFirstChild();
+
+                                    if (nextNode->getOpCodeValue() == TR::compressedRefs
+                                        && nextNode->getNumChildren() >= 1
+                                        && (nextNode->getFirstChild() == storeTT->getNode()
+                                            || nextNode->getFirstChild() == storeNode))
+                                        {
+                                        if (vp->trace())
+                                            logprintf(vp->trace(), vp->comp()->log(),
+                                                "VP ARRAY FORWARD:   queuing compressedRefs anchor n%dn for removal\n",
+                                                nextNode->getGlobalIndex());
+                                        vp->_forwardedStoreTreesToRemove.add(nextTT);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                    // use in-place morph when ref-count < 1
+                    if (node->getReferenceCount() > 1)
+                        {
+                        vp->_pendingAlloadiMorphs.add(
+                            new (vp->trHeapMemory()) TR_Pair<TR::Node, TR::Node>(node, storedValue));
+                        if (vp->trace())
+                            logprintf(vp->trace(), vp->comp()->log(),
+                                "VP ARRAY FORWARD:   queued shared aloadi n%dn for deferred morph to %s\n",
+                                node->getGlobalIndex(),
+                                storedValue->getOpCode().getName());
+                        return node;
+                        }
+
+                    // rc == 1. replace node directly with storedValue.
+                    storedValue->incReferenceCount();
+                    if (vp->optimizer()->prepareForNodeRemoval(node, /* deferInvalidatingUseDefInfo = */ true))
+                        vp->invalidateUseDefInfo();
+                    node->decReferenceCount();
+                    return storedValue;
+                    }
+                }
+            }
+        }
+        }
+
     bool isGlobal;
 
     // an indirectly loaded object cannot be a stack object
@@ -3757,6 +3986,29 @@ TR::Node *constrainVariableNewArray(OMR::ValuePropagation *vp, TR::Node *node)
     return node;
 }
 
+static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *node)
+    {
+    uint32_t gIdx = (uint32_t)vp->getValueNumber(node);
+    TR::list<uint64_t, TR::Region &> toRemove(vp->comp()->trMemory()->currentStackRegion());
+    {
+    auto fwdCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(vp->_arrayShadowForwardingMap);
+    for (fwdCursor.SetToFirst(); fwdCursor.Valid(); fwdCursor.SetToNext())
+        {
+        uint64_t k = vp->_arrayShadowForwardingMap.KeyAt(fwdCursor);
+        if ((k >> 32) == gIdx)
+            toRemove.push_back(k);
+        }
+    }
+    for (auto k : toRemove)
+        {
+        CS2::HashIndex idx;
+        if (vp->_arrayShadowForwardingMap.Locate(k, idx))
+            vp->_arrayShadowForwardingMap.Remove(idx);
+        if (vp->_arrayShadowStoreTTMap.Locate(k, idx))
+            vp->_arrayShadowStoreTTMap.Remove(idx);
+        }
+    }
+
 TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
 {
     constrainChildren(vp, node);
@@ -3794,8 +4046,257 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
         if (typeConstraint && typeConstraint->getClassType() && typeConstraint->getClassType()->getClass()) {
             TR_OpaqueClassBlock *arrayClass
                 = vp->fe()->getArrayClassFromComponentClass(typeConstraint->getClassType()->getClass());
-            if (arrayClass)
+            static bool disableArrayStoreSpreadElimination = feGetEnv("TR_disableArrayStoreSpreadElimination") != NULL;
+            if (arrayClass && !disableArrayStoreSpreadElimination)
+                {
                 node->setAllocationCanBeRemoved(true);
+
+                // GVP: scan forward from this treetop to collect every awrtbari at a constant offset and save its value
+                // for forwarding in constrainaloadi
+                if (vp->_isGlobalPropagation
+                    && sizeConstraint->getLowInt() == sizeConstraint->getHighInt())
+                    {
+                    if (vp->trace())
+                        logprintf(vp->trace(), vp->comp()->log(),
+                            "VP ARRAY FORWARD: scanning stores for anewarray n%dn [" POINTER_PRINTF_FORMAT "]\n",
+                            node->getGlobalIndex(), node);
+
+                    TR_UseDefInfo *useDefInfo = vp->_useDefInfo;
+
+                    for (TR::TreeTop *ftt = vp->_curTree->getNextTreeTop();
+                         ftt != NULL;
+                         ftt = ftt->getNextTreeTop())
+                        {
+                        TR::Node *fNode = ftt->getNode();
+
+                        if (fNode->getOpCodeValue() == TR::BBEnd
+                            || fNode->getOpCodeValue() == TR::BBStart)
+                            continue;
+
+                        bool escaped = false;
+                        if (fNode->getOpCode().isReturn()
+                            && fNode->getNumChildren() >= 1
+                            && vp->getValueNumber(fNode->getFirstChild()) == vp->getValueNumber(node))
+                            {
+                            if (vp->trace())
+                                logprintf(vp->trace(), vp->comp()->log(),
+                                    "VP ARRAY FORWARD:   anewarray n%dn escapes via areturn n%dn — aborting scan\n",
+                                    node->getGlobalIndex(), fNode->getGlobalIndex());
+                            escaped = true;
+                            }
+ 
+                        int32_t arrayVN = vp->getValueNumber(node);
+
+                        // Escape via call argument.
+                        if (!escaped && fNode->getOpCode().isCall())
+                            {
+                            int32_t firstArgIndex = fNode->getFirstArgumentIndex();
+                            for (int32_t i = firstArgIndex; i < fNode->getNumChildren(); ++i)
+                                {
+                                if (vp->getValueNumber(fNode->getChild(i)) == arrayVN)
+                                    {
+                                    if (vp->trace())
+                                        logprintf(vp->trace(), vp->comp()->log(),
+                                            "VP ARRAY FORWARD:   anewarray n%dn escapes via call arg %d of n%dn — aborting scan\n",
+                                            node->getGlobalIndex(), i, fNode->getGlobalIndex());
+                                    escaped = true;
+                                    break;
+                                    }
+                                }
+                            }
+
+                        // stored to a non-local
+                        if (!escaped
+                            && fNode->getOpCode().isStore()
+                            && fNode->getOpCode().isIndirect())
+                            {
+                            if (fNode->getNumChildren() >= 2
+                                && vp->getValueNumber(fNode->getChild(1)) == arrayVN)
+                                {
+                                if (vp->trace())
+                                    logprintf(vp->trace(), vp->comp()->log(),
+                                        "VP ARRAY FORWARD:   anewarray n%dn escapes via indirect store n%dn value child — aborting scan\n",
+                                        node->getGlobalIndex(), fNode->getGlobalIndex());
+                                escaped = true;
+                                }
+                            }
+
+                        if (escaped)
+                            {
+                            removeArrayForwardingEntries(vp, node);
+                            break;
+                            }
+
+                        TR::Node *wrtbar = NULL;
+                        if (fNode->getOpCodeValue() == TR::awrtbari)
+                            {
+                            wrtbar = fNode;
+                            if (vp->trace())
+                                logprintf(vp->trace(), vp->comp()->log(),
+                                    "VP ARRAY FORWARD:   found awrtbari n%dn directly\n",
+                                    wrtbar->getGlobalIndex());
+                            }
+                        else if (fNode->getNumChildren() >= 1
+                                 && fNode->getFirstChild()->getOpCodeValue() == TR::awrtbari)
+                            {
+                            // Unwrap ArrayStoreCHK, plain treetop, or compressedRefs if present.
+                            TR::Node *child = fNode->getFirstChild();
+                            if (fNode->getOpCodeValue() == TR::compressedRefs
+                                && child->getReferenceCount() > 1)
+                                {
+                                // awrtbari is commoned. handle elsewhere
+                                if (vp->trace())
+                                    logprintf(vp->trace(), vp->comp()->log(),
+                                        "VP ARRAY FORWARD:   skip compressedRefs n%dn: awrtbari n%dn is commoned (rc=%d)\n",
+                                        fNode->getGlobalIndex(),
+                                        child->getGlobalIndex(),
+                                        child->getReferenceCount());
+                                }
+                            else
+                                {
+                                wrtbar = child;
+                                if (vp->trace())
+                                    logprintf(vp->trace(), vp->comp()->log(),
+                                        "VP ARRAY FORWARD:   found awrtbari n%dn under %s n%dn\n",
+                                        wrtbar->getGlobalIndex(),
+                                        fNode->getOpCode().getName(),
+                                        fNode->getGlobalIndex());
+                                }
+                            }
+
+                        if (wrtbar == NULL)
+                            continue;
+
+                        // awrtbari child layout: [addrChild, valueChild, destObj]
+                        //   child(0) = aladd/aiadd (store address)
+                        //   child(1) = value being stored
+                        //   child(2) = destination object for write barrier
+                        if (wrtbar->getNumChildren() < 3
+                            || !wrtbar->getChild(0)->getOpCode().isArrayRef())
+                            {
+                            if (vp->trace())
+                                logprintf(vp->trace(), vp->comp()->log(),
+                                    "VP ARRAY FORWARD:   skip n%dn: bad child count or addr not arrayref\n",
+                                    wrtbar->getGlobalIndex());
+                            continue;
+                            }
+
+                        TR::Node *addrChild  = wrtbar->getChild(0);
+                        TR::Node *storeBase  = addrChild->getFirstChild();
+                        TR::Node *offsetNode = addrChild->getSecondChild();
+
+                        if (!offsetNode->getOpCode().isLoadConst())
+                            {
+                            if (vp->trace())
+                                logprintf(vp->trace(), vp->comp()->log(),
+                                    "VP ARRAY FORWARD:   skip n%dn: non-constant offset\n",
+                                    wrtbar->getGlobalIndex());
+                            continue;
+                            }
+
+                        // Check that the store base is this anewarray via value number.
+                        if (vp->getValueNumber(storeBase) != vp->getValueNumber(node))
+                            {
+                            if (vp->trace())
+                                logprintf(vp->trace(), vp->comp()->log(),
+                                    "VP ARRAY FORWARD:   skip n%dn: store base n%dn is not this anewarray n%dn\n",
+                                    wrtbar->getGlobalIndex(), storeBase->getGlobalIndex(), node->getGlobalIndex());
+                            continue;
+                            }
+
+                        TR::Node *valueChild = wrtbar->getChild(1);
+
+                        // check for unique definition. To forward, value must not be ambiguous
+                        if (valueChild->getOpCode().isLoadVarDirect()
+                            && valueChild->getOpCode().hasSymbolReference()
+                            && valueChild->getSymbol()->isAutoOrParm()
+                            && !valueChild->getSymbol()->isParm())
+                            {
+                            bool skipValue = true;
+                            if (useDefInfo)
+                                {
+                                uint16_t valUseIdx = valueChild->getUseDefIndex();
+                                if (useDefInfo->isUseIndex(valUseIdx))
+                                    {
+                                    TR_UseDefInfo::BitVector valDefs(vp->comp()->allocator());
+                                    if (useDefInfo->getUseDef(valDefs, valUseIdx)
+                                        && valDefs.PopulationCount() == 1)
+                                        {
+                                        TR_UseDefInfo::BitVector::Cursor vc(valDefs);
+                                        vc.SetToFirstOne();
+                                        int32_t valDefIdx = vc;
+                                        if (valDefIdx >= useDefInfo->getFirstRealDefIndex())
+                                            skipValue = false; // single non-entry def — safe
+                                        }
+                                    }
+                                }
+                            if (skipValue)
+                                {
+                                if (vp->trace())
+                                    logprintf(vp->trace(), vp->comp()->log(),
+                                        "VP ARRAY FORWARD:   skip n%dn: value n%dn is aload of Auto with ambiguous def\n",
+                                        wrtbar->getGlobalIndex(), valueChild->getGlobalIndex());
+                                continue;
+                                }
+                            if (vp->trace())
+                                logprintf(vp->trace(), vp->comp()->log(),
+                                    "VP ARRAY FORWARD:   value n%dn is aload of single-def Auto — safe to forward\n",
+                                    valueChild->getGlobalIndex());
+                            }
+
+                        int64_t offset = offsetNode->getOpCode().isLong()
+                            ? offsetNode->getLongInt()
+                            : (int64_t)offsetNode->getInt();
+
+                        // Key: upper 32 bits = value number of the anewarray
+                        //      lower 32 bits = constant offset.
+                        uint64_t key = ((uint64_t)(uint32_t)vp->getValueNumber(node) << 32)
+                                       | (uint64_t)(uint32_t)offset;
+
+                        CS2::HashIndex idx;
+                        if (!vp->_arrayShadowForwardingMap.Locate(key, idx))
+                            {
+                            // store value to temp so that constrainChildren does not mess with it
+                            TR::SymbolReference *tempSymRef =
+                                vp->comp()->getSymRefTab()->createTemporary(
+                                    vp->comp()->getMethodSymbol(), TR::Address);
+                            TR::Node *astoreNode = TR::Node::createWithSymRef(
+                                TR::astore, 1, 1, valueChild, tempSymRef);
+                            TR::TreeTop *astoreTT = TR::TreeTop::create(
+                                vp->comp(), astoreNode, NULL, NULL);
+
+                            ftt->insertBefore(astoreTT);
+                            TR::Node *forwardedValue = TR::Node::createWithSymRef(
+                                TR::aload, 0, tempSymRef);
+                            forwardedValue->setReferenceCount(1);
+                            if (vp->trace())
+                                logprintf(vp->trace(), vp->comp()->log(),
+                                    "VP ARRAY FORWARD:   privatized value n%dn into astore/aload temp #%d\n",
+                                    valueChild->getGlobalIndex(),
+                                    tempSymRef->getReferenceNumber());
+
+                            vp->_arrayShadowForwardingMap.Add(key, forwardedValue);
+                            vp->_arrayShadowStoreTTMap.Add(key, ftt);
+                            if (vp->trace())
+                                logprintf(vp->trace(), vp->comp()->log(),
+                                    "VP ARRAY FORWARD:   mapped [anewarray n%dn offset %lld] -> value n%dn [" POINTER_PRINTF_FORMAT "]\n",
+                                    node->getGlobalIndex(), (long long)offset,
+                                    forwardedValue->getGlobalIndex(), forwardedValue);
+                            }
+                        else
+                            {
+                            // same element is stored to more than once. abort the optimization
+                            if (vp->trace())
+                                logprintf(vp->trace(), vp->comp()->log(),
+                                    "VP ARRAY FORWARD:   slot [anewarray n%dn offset %lld] written twice (n%dn) — purging all entries and aborting scan\n",
+                                    node->getGlobalIndex(), (long long)offset,
+                                    wrtbar->getGlobalIndex());
+                            removeArrayForwardingEntries(vp, node);
+                            break;
+                            }
+                        }
+                    }
+                }
         }
     }
 

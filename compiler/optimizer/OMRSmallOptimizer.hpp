@@ -432,6 +432,10 @@ private:
 
     bool _firstTimeStructureIsBuilt;
     bool _disableLoopOptsThatCanCreateLoops;
+    bool _inGVPWalk;
+
+public:
+    void setInGVPWalk(bool v) { _inGVPWalk = v; }
 
     TR_BitVector *_seenBlocksGRA; // used during the GRA as a global
     TR_BitVector *_resetExitsGRA; // used during the GRA as a global

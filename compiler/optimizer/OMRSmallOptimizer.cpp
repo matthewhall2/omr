@@ -238,6 +238,7 @@ OMR::SmallOptimizer::SmallOptimizer(TR::Compilation *comp, TR::ResolvedMethodSym
     , _stackedOptimizer(false)
     , _firstTimeStructureIsBuilt(true)
     , _disableLoopOptsThatCanCreateLoops(false)
+    , _inGVPWalk(false)
 {
     // zero opts table
     memset(_opts, 0, sizeof(_opts));
@@ -1544,7 +1545,7 @@ bool OMR::SmallOptimizer::prepareForNodeRemoval(TR::Node *node, bool deferInvali
     for (int32_t i = node->getNumChildren() - 1; i >= 0; i--) {
         TR::Node *child = node->getChild(i);
         if (child != NULL && child->getReferenceCount() == 1)
-            if (prepareForNodeRemoval(child))
+            if (prepareForNodeRemoval(child, deferInvalidatingUseDefInfo))
                 useDefInfoAreInvalid = true;
     }
     return useDefInfoAreInvalid;

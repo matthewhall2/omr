@@ -980,6 +980,34 @@ public:
     TR_ValueNumberInfo *_valueNumberInfo; // Cached value number info
     CS2::HashTable<uint64_t, TR::list<TR::Node *> *, TR::Allocator> _constNodeInfo;
 
+    // Map from (anewarray_globalIndex << 32 | offset) to a privatized
+    // aload <temp> node whose matching astore <temp> = valueChild was inserted
+    // immediately before the awrtbari treetop during the constrainANewArray scan.
+    // The aload node is freshly created and is NOT a child of the awrtbari, so
+    // it is stable across the subsequent constrainWrtBar / constrainChildren walk
+    // (which can replace awrtbari children in-place via parent->setChild()).
+    // Populated by constrainANewArray / constrainNewArray during GVP;
+    // consumed by constrainAloadi.
+    CS2::HashTable<uint64_t, TR::Node *, TR::Allocator> _arrayShadowForwardingMap;
+
+    // Parallel map from the same key to the TR::TreeTop * of the awrtbari that
+    // wrote that slot.  Only populated for slots written exactly once: if a
+    // second awrtbari writes the same slot the entry is set to NULL so that
+    // constrainAloadi knows not to delete either store.
+    CS2::HashTable<uint64_t, TR::TreeTop *, TR::Allocator> _arrayShadowStoreTTMap;
+
+    // Forwarded awrtbari treetops to remove in doDelayedTransformations, after
+    // the use-def assertion check in GVP::perform() has already passed.
+    TR_ScratchList<TR::TreeTop> _forwardedStoreTreesToRemove;
+
+    // Pending in-place aloadi→aload morphs for shared (rc > 1) nodes.
+    // Queued during the GVP walk; executed in doDelayedTransformations after
+    // _inGVPWalk is cleared so that removeChildren cannot call setUseDefInfo(NULL)
+    // while the walk's cached use-def pointer is still live.
+    // key = the aloadi node to morph; value = the forwarded value node whose
+    // opcode/symref to adopt.
+    TR_ScratchList<TR_Pair<TR::Node, TR::Node>> _pendingAlloadiMorphs;
+
     // Flags
     //
     bool lastTimeThrough() { return _lastTimeThrough; }

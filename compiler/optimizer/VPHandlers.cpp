@@ -1863,6 +1863,97 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
     if (refineUnsafeAccess(vp, node))
         return node;
 
+    // Array store-to-load forwarding.
+    //
+    // If this aloadi is an array-shadow load, scan backwards through preceding
+    // treetops in the same extended block for a dominating awrtbari on the
+    // same array shadow whose address child (aladd/aiadd) is the exact same
+    // IL node (DAG pointer equality).  The aladd is shared between the store
+    // and the load after inlining + simplification, so pointer equality is the
+    // correct and sufficient matching condition — no value-number lookup or
+    // structural comparison is needed.
+    //
+    // The base array must carry allocationCanBeRemoved, which VP itself sets
+    // on non-escaping anewarray/newarray nodes.  This is the escape guard; we
+    // do not need full EA.
+    //
+    if (node->getOpCode().hasSymbolReference()
+        && node->getSymbol()->isArrayShadowSymbol()
+        && node->getFirstChild()->getOpCode().isArrayRef())
+        {
+        TR::Node            *loadAddr   = node->getFirstChild();
+        TR::SymbolReference *loadSR     = node->getSymbolReference();
+        TR::Node            *storedValue = NULL;
+        bool                 aliased    = false;
+
+        for (TR::TreeTop *tt = vp->_curTree->getPrevTreeTop();
+             tt != NULL && !aliased && storedValue == NULL;
+             tt = tt->getPrevTreeTop())
+            {
+            TR::Node *ttNode = tt->getNode();
+
+            if (ttNode->getOpCodeValue() == TR::BBStart)
+                break;
+
+            if (ttNode->getOpCodeValue() == TR::awrtbari
+                && ttNode->getSymbolReference() == loadSR
+                && ttNode->getNumChildren() >= 2
+                && ttNode->getChild(1) == loadAddr)   // same aladd node pointer
+                {
+                // Verify the base array is a non-escaping allocation so that
+                // forwarding is correct: the array cannot have been modified
+                // through an alias we have not seen.
+                TR::Node *storeAddr = ttNode->getChild(1);
+                TR::Node *storeBase = storeAddr->getFirstChild();
+                if ((storeBase->getOpCodeValue() == TR::anewarray
+                     || storeBase->getOpCodeValue() == TR::newarray)
+                    && storeBase->markedAllocationCanBeRemoved())
+                    {
+                    storedValue = ttNode->getFirstChild(); // value child of awrtbari
+                    }
+                else
+                    {
+                    // Same address, but not a local non-escaping array — bail.
+                    aliased = true;
+                    }
+                }
+            else if (ttNode->getOpCode().isStore()
+                     && ttNode->getOpCode().hasSymbolReference()
+                     && ttNode->getSymbolReference() == loadSR)
+                {
+                // Any other store through the same shadow may alias.
+                aliased = true;
+                }
+            }
+
+        if (!aliased && storedValue != NULL)
+            {
+            bool isGlobalFwd = false;
+            TR::VPConstraint *fwdConstraint = vp->getConstraint(storedValue, isGlobalFwd);
+
+            if (performTransformation(vp->comp(),
+                    "%sVP ARRAY FORWARD: replacing aloadi n%dn [" POINTER_PRINTF_FORMAT "] "
+                    "with forwarded value n%dn [" POINTER_PRINTF_FORMAT "]\n",
+                    OPT_DETAILS,
+                    node->getGlobalIndex(), node,
+                    storedValue->getGlobalIndex(), storedValue))
+                {
+                if (fwdConstraint)
+                    vp->addBlockConstraint(node, fwdConstraint);
+
+                storedValue->incReferenceCount();
+                node->recursivelyDecReferenceCount();
+                return storedValue;
+                }
+            }
+        else if (vp->trace() && !aliased)
+            {
+            traceMsg(vp->comp(),
+                "VP ARRAY FORWARD: no dominating store found for aloadi n%dn [" POINTER_PRINTF_FORMAT "]\n",
+                node->getGlobalIndex(), node);
+            }
+        }
+
     bool isGlobal;
 
     // an indirectly loaded object cannot be a stack object

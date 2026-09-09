@@ -2040,7 +2040,26 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                             node->getGlobalIndex());
                     }
 
-                if (storedValue != NULL
+                // On compressed-refs JVMs an array-shadow aloadi can be shared
+                // (rc > 1): it appears both as child(0) of a compressedRefs anchor
+                // (decompressed consumer) and as a direct call argument (where the
+                // codegen decompresses it implicitly via the compressedRefs parent).
+                //
+                // We can only safely forward when rc == 1.  If the node is shared,
+                // replacing it here would leave other consumers pointing at the old
+                // node with stale data -- producing a garbled object reference at
+                // call sites like linkToStatic, which manifests as a Java-level
+                // argument type mismatch rather than a segfault (the double-shifted
+                // address still lands inside the heap, just on the wrong object).
+                if (storedValue != NULL && node->getReferenceCount() > 1)
+                    {
+                    if (vp->trace())
+                        logprintf(vp->trace(), vp->comp()->log(),
+                            "VP ARRAY FORWARD:   skip aloadi n%dn: rc=%d > 1 "
+                            "(shared node, cannot replace in place)\n",
+                            node->getGlobalIndex(), node->getReferenceCount());
+                    }
+                else if (storedValue != NULL
                     && performTransformation(vp->comp(),
                         "%sVP ARRAY FORWARD: replacing aloadi n%dn [" POINTER_PRINTF_FORMAT "] "
                         "with forwarded value n%dn [" POINTER_PRINTF_FORMAT "]\n",

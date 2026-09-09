@@ -1877,8 +1877,18 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
     //
     if (vp->_isGlobalPropagation
         && node->getOpCode().hasSymbolReference()
-        && node->getSymbol()->isArrayShadowSymbol()
-        && node->getFirstChild()->getOpCode().isArrayRef())
+        && node->getSymbol()->isArrayShadowSymbol())
+        {
+        if (!node->getFirstChild()->getOpCode().isArrayRef())
+            {
+            if (vp->trace())
+                logprintf(vp->trace(), vp->comp()->log(),
+                    "VP ARRAY FORWARD: skip aloadi n%dn: addr child %s n%dn is not arrayref\n",
+                    node->getGlobalIndex(),
+                    node->getFirstChild()->getOpCode().getName(),
+                    node->getFirstChild()->getGlobalIndex());
+            }
+        else
         {
         TR::Node *loadAddr   = node->getFirstChild(); // aladd/aiadd
         TR::Node *baseNode   = loadAddr->getFirstChild();

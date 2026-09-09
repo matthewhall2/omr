@@ -1948,7 +1948,7 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
             }
         else if (vp->trace() && !aliased)
             {
-            traceMsg(vp->comp(),
+            logprintf(vp->trace(), vp->comp()->log(),
                 "VP ARRAY FORWARD: no dominating store found for aloadi n%dn [" POINTER_PRINTF_FORMAT "]\n",
                 node->getGlobalIndex(), node);
             }

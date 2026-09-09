@@ -1895,21 +1895,32 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
             if (ttNode->getOpCodeValue() == TR::BBStart)
                 break;
 
-            if (ttNode->getOpCodeValue() == TR::awrtbari
-                && ttNode->getSymbolReference() == loadSR
-                && ttNode->getNumChildren() >= 2
-                && ttNode->getChild(1) == loadAddr)   // same aladd node pointer
+            // The awrtbari may sit directly as the treetop node, or be wrapped
+            // inside an ArrayStoreCHK (the normal case after ilgen).
+            // compressedRefs treetops that back-reference the same awrtbari are
+            // skipped — they are not stores in their own right.
+            TR::Node *wrtbar = NULL;
+            if (ttNode->getOpCodeValue() == TR::awrtbari)
+                wrtbar = ttNode;
+            else if (ttNode->getOpCodeValue() == TR::ArrayStoreCHK
+                     && ttNode->getNumChildren() >= 1
+                     && ttNode->getFirstChild()->getOpCodeValue() == TR::awrtbari)
+                wrtbar = ttNode->getFirstChild();
+
+            if (wrtbar != NULL
+                && wrtbar->getSymbolReference() == loadSR
+                && wrtbar->getNumChildren() >= 2
+                && wrtbar->getChild(1) == loadAddr)   // same aladd node pointer
                 {
                 // Verify the base array is a non-escaping allocation so that
                 // forwarding is correct: the array cannot have been modified
                 // through an alias we have not seen.
-                TR::Node *storeAddr = ttNode->getChild(1);
-                TR::Node *storeBase = storeAddr->getFirstChild();
+                TR::Node *storeBase = loadAddr->getFirstChild();
                 if ((storeBase->getOpCodeValue() == TR::anewarray
                      || storeBase->getOpCodeValue() == TR::newarray)
                     && storeBase->markedAllocationCanBeRemoved())
                     {
-                    storedValue = ttNode->getFirstChild(); // value child of awrtbari
+                    storedValue = wrtbar->getFirstChild(); // value child of awrtbari
                     }
                 else
                     {

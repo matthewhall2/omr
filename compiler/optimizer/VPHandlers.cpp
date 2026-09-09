@@ -1901,7 +1901,12 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
             {
             TR::Node *ttNode = tt->getNode();
 
-            if (ttNode->getOpCodeValue() == TR::BBStart)
+            // Stop at a BBStart that begins a new extended block (i.e. a real
+            // control-flow join point).  A BBStart that is an extension of the
+            // previous block is safe to cross because local VP carries
+            // constraints through extended blocks with no intervening merge.
+            if (ttNode->getOpCodeValue() == TR::BBStart
+                && !ttNode->getBlock()->isExtensionOfPreviousBlock())
                 break;
 
             // The awrtbari may sit directly as the treetop node, or be wrapped

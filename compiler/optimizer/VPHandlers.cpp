@@ -2064,7 +2064,8 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                     }
                 }
             }
-        }
+        } // else (isArrayRef)
+        } // if (_isGlobalPropagation && isArrayShadow)
 
     bool isGlobal;
 

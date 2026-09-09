@@ -3869,6 +3869,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                 // without needing to scan backwards across block boundaries.
                 if (vp->_isGlobalPropagation)
                     {
+                    logprintf(vp->trace(), vp->comp()->log(), "Searching for array stores after anewarray\n");
                     for (TR::TreeTop *ftt = vp->_curTree->getNextTreeTop();
                          ftt != NULL;
                          ftt = ftt->getNextTreeTop())
@@ -3882,12 +3883,20 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
 
                         // Unwrap ArrayStoreCHK if present.
                         TR::Node *wrtbar = NULL;
-                        if (fNode->getOpCodeValue() == TR::awrtbari)
+                        if (fNode->getOpCodeValue() == TR::awrtbari) {
+                            logprintf(vp->trace(), vp->comp()->log(), "Found awrtbari\n");
                             wrtbar = fNode;
-                        else if (fNode->getOpCodeValue() == TR::ArrayStoreCHK
-                                 && fNode->getNumChildren() >= 1
-                                 && fNode->getFirstChild()->getOpCodeValue() == TR::awrtbari)
-                            wrtbar = fNode->getFirstChild();
+                        }
+                        else if (fNode->getOpCodeValue() == TR::ArrayStoreCHK) {
+                            logprintf(vp->trace(), vp->comp()->log(), "Found ArrayStoreCHK\n");
+                            if (fNode->getNumChildren() >= 1
+                                && fNode->getFirstChild()->getOpCodeValue() == TR::awrtbari) {
+                                    logprintf(vp->trace(), vp->comp()->log(), "Found awrtbari under ArrayStoreCHK\n");
+                                    wrtbar = fNode->getFirstChild();
+                                }
+                        }
+                                 
+                            
 
                         if (wrtbar != NULL
                             && wrtbar->getNumChildren() >= 2

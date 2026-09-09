@@ -1915,7 +1915,7 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
             // skipped — they are not stores in their own right.
             TR::Node *wrtbar = NULL;
             if (ttNode->getOpCodeValue() == TR::awrtbari) {
-                MR::Logger *log = vp->comp()->log();
+                OMR::Logger *log = vp->comp()->log();
                 logprintf(vp->trace(), log, "Found awrtvari - checking\n");
                 wrtbar = ttNode;
             }

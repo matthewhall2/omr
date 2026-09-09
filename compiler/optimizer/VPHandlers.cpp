@@ -1914,12 +1914,17 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
             // compressedRefs treetops that back-reference the same awrtbari are
             // skipped — they are not stores in their own right.
             TR::Node *wrtbar = NULL;
-            if (ttNode->getOpCodeValue() == TR::awrtbari)
+            if (ttNode->getOpCodeValue() == TR::awrtbari) {
+                logprintf(vp->trace(), log, "Found awrtvari - checking\n");
                 wrtbar = ttNode;
+            }
             else if (ttNode->getOpCodeValue() == TR::ArrayStoreCHK
                      && ttNode->getNumChildren() >= 1
                      && ttNode->getFirstChild()->getOpCodeValue() == TR::awrtbari)
-                wrtbar = ttNode->getFirstChild();
+                     {
+                        logprintf(vp->trace(), log, "Found awrtvari under ArrayStoreCHK- checking\n");
+                        wrtbar = ttNode->getFirstChild();
+                     }
 
             if (wrtbar != NULL
                 && wrtbar->getSymbolReference() == loadSR

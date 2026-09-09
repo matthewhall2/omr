@@ -3898,13 +3898,17 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                  
                             
 
+                        // awrtbari child layout: [addrChild, valueChild, destObj]
+                        //   child(0) = aladd/aiadd (store address)
+                        //   child(1) = value being stored
+                        //   child(2) = destination object for write barrier
                         if (wrtbar != NULL
-                            && wrtbar->getNumChildren() >= 2
-                            && wrtbar->getChild(1)->getOpCode().isArrayRef()
-                            && wrtbar->getChild(1)->getFirstChild() == node)
+                            && wrtbar->getNumChildren() >= 3
+                            && wrtbar->getChild(0)->getOpCode().isArrayRef()
+                            && wrtbar->getChild(0)->getFirstChild() == node)
                             {
-                            TR::Node *addrChild  = wrtbar->getChild(1);
-                            TR::Node *valueChild = wrtbar->getFirstChild();
+                            TR::Node *addrChild  = wrtbar->getChild(0);
+                            TR::Node *valueChild = wrtbar->getChild(1);
                             uint64_t key = (uint64_t)(uintptr_t)addrChild;
 
                             if (vp->trace())

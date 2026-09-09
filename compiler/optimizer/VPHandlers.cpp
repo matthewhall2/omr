@@ -1886,6 +1886,15 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
         TR::Node            *storedValue = NULL;
         bool                 aliased    = false;
 
+        if (vp->trace())
+            {
+            OMR::Logger *log = vp->comp()->log();
+            logprintf(vp->trace(), log,
+                "VP ARRAY FORWARD: considering aloadi n%dn [" POINTER_PRINTF_FORMAT "]\n",
+                node->getGlobalIndex(), node);
+            vp->comp()->getDebug()->print(log, vp->_curTree);
+            }
+
         for (TR::TreeTop *tt = vp->_curTree->getPrevTreeTop();
              tt != NULL && !aliased && storedValue == NULL;
              tt = tt->getPrevTreeTop())
@@ -1912,6 +1921,15 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                 && wrtbar->getNumChildren() >= 2
                 && wrtbar->getChild(1) == loadAddr)   // same aladd node pointer
                 {
+                if (vp->trace())
+                    {
+                    OMR::Logger *log = vp->comp()->log();
+                    logprintf(vp->trace(), log,
+                        "VP ARRAY FORWARD:   candidate awrtbari n%dn [" POINTER_PRINTF_FORMAT "]\n",
+                        wrtbar->getGlobalIndex(), wrtbar);
+                    vp->comp()->getDebug()->print(log, tt);
+                    }
+
                 // Verify the base array is a non-escaping allocation so that
                 // forwarding is correct: the array cannot have been modified
                 // through an alias we have not seen.

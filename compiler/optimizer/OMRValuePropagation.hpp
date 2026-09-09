@@ -980,6 +980,12 @@ public:
     TR_ValueNumberInfo *_valueNumberInfo; // Cached value number info
     CS2::HashTable<uint64_t, TR::list<TR::Node *> *, TR::Allocator> _constNodeInfo;
 
+    // Map from aladd/aiadd node pointer (cast to uint64_t) to the value node
+    // stored into that array slot by a dominating awrtbari on a non-escaping
+    // allocationCanBeRemoved array.  Populated by constrainANewArray /
+    // constrainNewArray during GVP; consumed by constrainAloadi.
+    CS2::HashTable<uint64_t, TR::Node *, TR::Allocator> _arrayShadowForwardingMap;
+
     // Flags
     //
     bool lastTimeThrough() { return _lastTimeThrough; }

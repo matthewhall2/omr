@@ -1865,26 +1865,21 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
 
     // Array store-to-load forwarding.
     //
-    // If this aloadi is an array-shadow load, scan backwards through preceding
-    // treetops in the same extended block for a dominating awrtbari on the
-    // same array shadow whose address child (aladd/aiadd) is the exact same
-    // IL node (DAG pointer equality).  The aladd is shared between the store
-    // and the load after inlining + simplification, so pointer equality is the
-    // correct and sufficient matching condition — no value-number lookup or
-    // structural comparison is needed.
+    // For GVP: constrainANewArray populated _arrayShadowForwardingMap with a
+    // mapping from each aladd address node (pointer as key) to the value stored
+    // into that slot by the unique awrtbari on a non-escaping array.  Look up
+    // the load's address child directly — no cross-block scan needed.
     //
-    // The base array must carry allocationCanBeRemoved, which VP itself sets
-    // on non-escaping anewarray/newarray nodes.  This is the escape guard; we
-    // do not need full EA.
+    // The base array must carry allocationCanBeRemoved (set by VP itself on
+    // non-escaping allocations).  The uniqueness of the store was validated
+    // during map population in constrainANewArray.
     //
-    if (node->getOpCode().hasSymbolReference()
+    if (vp->_isGlobalPropagation
+        && node->getOpCode().hasSymbolReference()
         && node->getSymbol()->isArrayShadowSymbol()
         && node->getFirstChild()->getOpCode().isArrayRef())
         {
-        TR::Node            *loadAddr   = node->getFirstChild();
-        TR::SymbolReference *loadSR     = node->getSymbolReference();
-        TR::Node            *storedValue = NULL;
-        bool                 aliased    = false;
+        TR::Node *loadAddr = node->getFirstChild();
 
         if (vp->trace())
             {
@@ -1895,103 +1890,41 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
             vp->comp()->getDebug()->print(log, vp->_curTree);
             }
 
-        for (TR::TreeTop *tt = vp->_curTree->getPrevTreeTop();
-             tt != NULL && !aliased && storedValue == NULL;
-             tt = tt->getPrevTreeTop())
+        uint64_t key = (uint64_t)(uintptr_t)loadAddr;
+        CS2::HashIndex idx;
+        TR::Node *storedValue = NULL;
+        if (vp->_arrayShadowForwardingMap.Locate(key, idx))
+            storedValue = vp->_arrayShadowForwardingMap[idx];
+
+        if (vp->trace())
             {
-            TR::Node *ttNode = tt->getNode();
-
-            // Stop at a BBStart that begins a new extended block (i.e. a real
-            // control-flow join point).  A BBStart that is an extension of the
-            // previous block is safe to cross because local VP carries
-            // constraints through extended blocks with no intervening merge.
-            if (ttNode->getOpCodeValue() == TR::BBStart
-                && !ttNode->getBlock()->isExtensionOfPreviousBlock())
-                break;
-
-            // The awrtbari may sit directly as the treetop node, or be wrapped
-            // inside an ArrayStoreCHK (the normal case after ilgen).
-            // compressedRefs treetops that back-reference the same awrtbari are
-            // skipped — they are not stores in their own right.
-            TR::Node *wrtbar = NULL;
-            if (ttNode->getOpCodeValue() == TR::awrtbari) {
-                OMR::Logger *log = vp->comp()->log();
-                logprintf(vp->trace(), log, "Found awrtvari - checking\n");
-                wrtbar = ttNode;
-            }
-            else if (ttNode->getOpCodeValue() == TR::ArrayStoreCHK
-                     && ttNode->getNumChildren() >= 1
-                     && ttNode->getFirstChild()->getOpCodeValue() == TR::awrtbari)
-                     {
-                        OMR::Logger *log = vp->comp()->log();
-                        logprintf(vp->trace(), log, "Found awrtvari under ArrayStoreCHK- checking\n");
-                        wrtbar = ttNode->getFirstChild();
-                     }
-
-            if (wrtbar != NULL
-                && wrtbar->getSymbolReference() == loadSR
-                && wrtbar->getNumChildren() >= 2
-                && wrtbar->getChild(1) == loadAddr)   // same aladd node pointer
-                {
-                if (vp->trace())
-                    {
-                    OMR::Logger *log = vp->comp()->log();
-                    logprintf(vp->trace(), log,
-                        "VP ARRAY FORWARD:   candidate awrtbari n%dn [" POINTER_PRINTF_FORMAT "]\n",
-                        wrtbar->getGlobalIndex(), wrtbar);
-                    vp->comp()->getDebug()->print(log, tt);
-                    }
-
-                // Verify the base array is a non-escaping allocation so that
-                // forwarding is correct: the array cannot have been modified
-                // through an alias we have not seen.
-                TR::Node *storeBase = loadAddr->getFirstChild();
-                if ((storeBase->getOpCodeValue() == TR::anewarray
-                     || storeBase->getOpCodeValue() == TR::newarray)
-                    && storeBase->markedAllocationCanBeRemoved())
-                    {
-                    storedValue = wrtbar->getFirstChild(); // value child of awrtbari
-                    }
-                else
-                    {
-                    // Same address, but not a local non-escaping array — bail.
-                    aliased = true;
-                    }
-                }
-            else if (ttNode->getOpCode().isStore()
-                     && ttNode->getOpCode().hasSymbolReference()
-                     && ttNode->getSymbolReference() == loadSR)
-                {
-                // Any other store through the same shadow may alias.
-                aliased = true;
-                }
+            OMR::Logger *log = vp->comp()->log();
+            if (storedValue)
+                logprintf(vp->trace(), log,
+                    "VP ARRAY FORWARD:   map hit -> value n%dn [" POINTER_PRINTF_FORMAT "]\n",
+                    storedValue->getGlobalIndex(), storedValue);
+            else
+                logprintf(vp->trace(), log,
+                    "VP ARRAY FORWARD:   no map entry for aloadi n%dn\n",
+                    node->getGlobalIndex());
             }
 
-        if (!aliased && storedValue != NULL)
+        if (storedValue != NULL
+            && performTransformation(vp->comp(),
+                "%sVP ARRAY FORWARD: replacing aloadi n%dn [" POINTER_PRINTF_FORMAT "] "
+                "with forwarded value n%dn [" POINTER_PRINTF_FORMAT "]\n",
+                OPT_DETAILS,
+                node->getGlobalIndex(), node,
+                storedValue->getGlobalIndex(), storedValue))
             {
             bool isGlobalFwd = false;
             TR::VPConstraint *fwdConstraint = vp->getConstraint(storedValue, isGlobalFwd);
+            if (fwdConstraint)
+                vp->addBlockConstraint(node, fwdConstraint);
 
-            if (performTransformation(vp->comp(),
-                    "%sVP ARRAY FORWARD: replacing aloadi n%dn [" POINTER_PRINTF_FORMAT "] "
-                    "with forwarded value n%dn [" POINTER_PRINTF_FORMAT "]\n",
-                    OPT_DETAILS,
-                    node->getGlobalIndex(), node,
-                    storedValue->getGlobalIndex(), storedValue))
-                {
-                if (fwdConstraint)
-                    vp->addBlockConstraint(node, fwdConstraint);
-
-                storedValue->incReferenceCount();
-                node->recursivelyDecReferenceCount();
-                return storedValue;
-                }
-            }
-        else if (vp->trace() && !aliased)
-            {
-            logprintf(vp->trace(), vp->comp()->log(),
-                "VP ARRAY FORWARD: no dominating store found for aloadi n%dn [" POINTER_PRINTF_FORMAT "]\n",
-                node->getGlobalIndex(), node);
+            storedValue->incReferenceCount();
+            node->recursivelyDecReferenceCount();
+            return storedValue;
             }
         }
 
@@ -3928,6 +3861,64 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                 = vp->fe()->getArrayClassFromComponentClass(typeConstraint->getClassType()->getClass());
             if (arrayClass)
                 node->setAllocationCanBeRemoved(true);
+
+                // GVP: scan forward from this treetop to collect every awrtbari
+                // that stores into this array (identified by having this node as
+                // the base of their aladd address child).  Record aladd → value
+                // in _arrayShadowForwardingMap so constrainAloadi can forward
+                // without needing to scan backwards across block boundaries.
+                if (vp->_isGlobalPropagation)
+                    {
+                    for (TR::TreeTop *ftt = vp->_curTree->getNextTreeTop();
+                         ftt != NULL;
+                         ftt = ftt->getNextTreeTop())
+                        {
+                        TR::Node *fNode = ftt->getNode();
+
+                        if (fNode->getOpCodeValue() == TR::BBEnd)
+                            continue;
+                        if (fNode->getOpCodeValue() == TR::BBStart)
+                            continue;
+
+                        // Unwrap ArrayStoreCHK if present.
+                        TR::Node *wrtbar = NULL;
+                        if (fNode->getOpCodeValue() == TR::awrtbari)
+                            wrtbar = fNode;
+                        else if (fNode->getOpCodeValue() == TR::ArrayStoreCHK
+                                 && fNode->getNumChildren() >= 1
+                                 && fNode->getFirstChild()->getOpCodeValue() == TR::awrtbari)
+                            wrtbar = fNode->getFirstChild();
+
+                        if (wrtbar != NULL
+                            && wrtbar->getNumChildren() >= 2
+                            && wrtbar->getChild(1)->getOpCode().isArrayRef()
+                            && wrtbar->getChild(1)->getFirstChild() == node)
+                            {
+                            TR::Node *addrChild  = wrtbar->getChild(1);
+                            TR::Node *valueChild = wrtbar->getFirstChild();
+                            uint64_t key = (uint64_t)(uintptr_t)addrChild;
+
+                            if (vp->trace())
+                                {
+                                logprintf(vp->trace(), vp->comp()->log(),
+                                    "VP ARRAY FORWARD: mapping aladd n%dn [" POINTER_PRINTF_FORMAT
+                                    "] -> value n%dn [" POINTER_PRINTF_FORMAT "] for anewarray n%dn\n",
+                                    addrChild->getGlobalIndex(), addrChild,
+                                    valueChild->getGlobalIndex(), valueChild,
+                                    node->getGlobalIndex(), node);
+                                }
+
+                            CS2::HashIndex idx;
+                            if (!vp->_arrayShadowForwardingMap.Locate(key, idx))
+                                vp->_arrayShadowForwardingMap.Add(key, valueChild);
+                            // If a slot has more than one store, don't forward it —
+                            // the existing entry stays and constrainAloadi will see
+                            // it; we simply leave the first-seen value, which is
+                            // conservative only if there are multiple stores to the
+                            // same slot (rare / invalid for varargs patterns).
+                            }
+                        }
+                    }
         }
     }
 

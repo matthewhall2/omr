@@ -2044,7 +2044,12 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                         vp->addBlockConstraint(node, fwdConstraint);
 
                     storedValue->incReferenceCount();
+                    vp->prepareToStopUsingNode(node, vp->_curTree);
                     node->recursivelyDecReferenceCount();
+                    // If other treetops still reference this node, reset the visit
+                    // count so VP re-processes those uses and replaces them too.
+                    if (node->getReferenceCount() > 0)
+                        node->setVisitCount(0);
                     return storedValue;
                     }
                 }

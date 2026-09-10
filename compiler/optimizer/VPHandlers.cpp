@@ -2040,14 +2040,31 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                             node->getGlobalIndex());
                     }
 
-                // When rc > 1 the aloadi is shared across multiple consumers
-                // (e.g. compressedRefs anchor + call argument).  We still forward
-                // at the first visit: launchNode replaces the current parent's
-                // child pointer, decrements rc, and then setVisitCount(0) below
-                // ensures VP re-visits the aloadi for every remaining consumer
-                // (since their launchNode call will see visitCount != _visitCount
-                // and will call constrainAloadi again, this time with rc == 1).
+                // On compressed-refs JVMs an array-shadow aloadi is anchored as
+                // child(0) of a compressedRefs treetop so the codegen knows to
+                // sign-extend the narrow oop.  If we forward here while the parent
+                // is compressedRefs we would put a full reference inside a node
+                // that expects a narrow one, corrupting the value.
+                //
+                // Skip the replacement for that visit but reset visitCount so that
+                // VP re-visits the aloadi from every other consumer (call args,
+                // etc.) where the parent is NOT compressedRefs — those visits will
+                // forward correctly with rc == 1.
+                TR::Node *curParent = vp->getCurrentParent();
                 if (storedValue != NULL
+                    && curParent != NULL
+                    && curParent->getOpCodeValue() == TR::compressedRefs)
+                    {
+                    // Reset visit count so the non-compressedRefs consumer gets
+                    // its own constrainAloadi call and can forward there.
+                    node->setVisitCount(0);
+                    if (vp->trace())
+                        logprintf(vp->trace(), vp->comp()->log(),
+                            "VP ARRAY FORWARD:   defer aloadi n%dn: parent is compressedRefs "
+                            "(will forward at direct consumer)\n",
+                            node->getGlobalIndex());
+                    }
+                else if (storedValue != NULL
                     && performTransformation(vp->comp(),
                         "%sVP ARRAY FORWARD: replacing aloadi n%dn [" POINTER_PRINTF_FORMAT "] "
                         "with forwarded value n%dn [" POINTER_PRINTF_FORMAT "]\n",

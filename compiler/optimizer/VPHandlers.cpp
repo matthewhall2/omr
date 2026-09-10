@@ -4086,7 +4086,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             || fNode->getOpCodeValue() == TR::BBStart)
                             continue;
 
-                        // Unwrap ArrayStoreCHK if present.
+                        // Unwrap ArrayStoreCHK or plain treetop if present.
                         TR::Node *wrtbar = NULL;
                         if (fNode->getOpCodeValue() == TR::awrtbari)
                             {
@@ -4096,15 +4096,18 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                     "VP ARRAY FORWARD:   found awrtbari n%dn directly\n",
                                     wrtbar->getGlobalIndex());
                             }
-                        else if (fNode->getOpCodeValue() == TR::ArrayStoreCHK
-                                 && fNode->getNumChildren() >= 1
+                        else if (fNode->getNumChildren() >= 1
                                  && fNode->getFirstChild()->getOpCodeValue() == TR::awrtbari)
                             {
+                            // Covers both ArrayStoreCHK and plain treetop wrappers
+                            // (ArrayStoreCHK is replaced by a treetop after check removal).
                             wrtbar = fNode->getFirstChild();
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:   found awrtbari n%dn under ArrayStoreCHK n%dn\n",
-                                    wrtbar->getGlobalIndex(), fNode->getGlobalIndex());
+                                    "VP ARRAY FORWARD:   found awrtbari n%dn under %s n%dn\n",
+                                    wrtbar->getGlobalIndex(),
+                                    fNode->getOpCode().getName(),
+                                    fNode->getGlobalIndex());
                             }
 
                         if (wrtbar == NULL)

@@ -2077,6 +2077,42 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                     if (fwdConstraint)
                         vp->addBlockConstraint(node, fwdConstraint);
 
+                    // Morph aloadi in-place when rc > 1 and storedValue has no children.
+                    // storedValue is already fully evaluated in the IL DAG — it may be
+                    // an aload, a constant, or even the result of an acall that was already
+                    // executed.  We are forwarding the *result*, not re-executing it.
+                    // Morphing node in-place to match storedValue's opcode/symref makes
+                    // all rc>1 parents (including ones VP has already walked past) see the
+                    // forwarded value without needing to enumerate them.
+                    //
+                    // We restrict to storedValue->getNumChildren()==0: values with children
+                    // (e.g. the acall node itself, an allocation) would require wiring those
+                    // children into node with incremented rc, which is safe only if the
+                    // children are not side-effecting in isolation.  The childless case
+                    // (aload, aRegLoad, aconst, etc.) is always safe.
+                    //
+                    // Not used on compressed-refs JVMs: a compressedRefs parent is handled
+                    // by the deferral path above; morphing would corrupt that anchor.
+                    if (node->getReferenceCount() > 1
+                        && storedValue->getNumChildren() == 0
+                        && !vp->comp()->useCompressedPointers())
+                        {
+                        vp->removeChildren(node);
+                        if (storedValue->getOpCode().hasSymbolReference())
+                            TR::Node::recreateWithSymRef(node, storedValue->getOpCodeValue(),
+                                                        storedValue->getSymbolReference());
+                        else
+                            TR::Node::recreate(node, storedValue->getOpCodeValue());
+                        vp->invalidateUseDefInfo();
+                        vp->invalidateValueNumberInfo();
+                        if (vp->trace())
+                            logprintf(vp->trace(), vp->comp()->log(),
+                                "VP ARRAY FORWARD:   morphed shared aloadi n%dn in-place to %s\n",
+                                node->getGlobalIndex(),
+                                storedValue->getOpCode().getName());
+                        return node;
+                        }
+
                     storedValue->incReferenceCount();
                     vp->prepareToStopUsingNode(node, vp->_curTree);
                     node->recursivelyDecReferenceCount();

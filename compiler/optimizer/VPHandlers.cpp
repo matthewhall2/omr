@@ -1975,7 +1975,7 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                             }
                         else
                             {
-                            TR::Node *defNode = useDefInfo->getTreeTop(defIdx)->getNode();
+                            TR::Node *defNode = useDefInfo->getNode(defIdx);
                             if (!defNode->getOpCode().isStore() || defNode->getNumChildren() < 1)
                                 {
                                 if (vp->trace())
@@ -4018,6 +4018,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
             TR_OpaqueClassBlock *arrayClass
                 = vp->fe()->getArrayClassFromComponentClass(typeConstraint->getClassType()->getClass());
             if (arrayClass)
+                {
                 node->setAllocationCanBeRemoved(true);
 
                 // GVP: scan forward from this treetop to collect every awrtbari
@@ -4149,7 +4150,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                         wrtbar->getGlobalIndex(), storeBase->getGlobalIndex());
                                 continue;
                                 }
-                            TR::Node *defNode = useDefInfo->getTreeTop(defIdx)->getNode();
+                            TR::Node *defNode = useDefInfo->getNode(defIdx);
                             if (!defNode->getOpCode().isStore() || defNode->getNumChildren() < 1)
                                 {
                                 if (vp->trace())
@@ -4225,6 +4226,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                 wrtbar->getGlobalIndex());
                         }
                     }
+                } // if (arrayClass)
         }
     }
 

@@ -2065,6 +2065,10 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                             node->getGlobalIndex());
                     }
                 else if (storedValue != NULL
+                    // storedValue is always a leaf (aload of a parm, or aload of the
+                    // privatizing Auto temp we inserted during the store scan).  It is
+                    // safe to share across block boundaries.
+                    && storedValue->getNumChildren() == 0
                     && performTransformation(vp->comp(),
                         "%sVP ARRAY FORWARD: replacing aloadi n%dn [" POINTER_PRINTF_FORMAT "] "
                         "with forwarded value n%dn [" POINTER_PRINTF_FORMAT "]\n",
@@ -2077,24 +2081,12 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                     if (fwdConstraint)
                         vp->addBlockConstraint(node, fwdConstraint);
 
-                    // Morph aloadi in-place when rc > 1 and storedValue has no children.
-                    // storedValue is already fully evaluated in the IL DAG — it may be
-                    // an aload, a constant, or even the result of an acall that was already
-                    // executed.  We are forwarding the *result*, not re-executing it.
-                    // Morphing node in-place to match storedValue's opcode/symref makes
-                    // all rc>1 parents (including ones VP has already walked past) see the
-                    // forwarded value without needing to enumerate them.
-                    //
-                    // We restrict to storedValue->getNumChildren()==0: values with children
-                    // (e.g. the acall node itself, an allocation) would require wiring those
-                    // children into node with incremented rc, which is safe only if the
-                    // children are not side-effecting in isolation.  The childless case
-                    // (aload, aRegLoad, aconst, etc.) is always safe.
-                    //
-                    // Not used on compressed-refs JVMs: a compressedRefs parent is handled
-                    // by the deferral path above; morphing would corrupt that anchor.
+                    // storedValue has no children — it is safe to share across blocks
+                    // (aload of parm/auto, aconst, etc.).  Morph the aloadi in-place
+                    // when rc > 1 so all consumers see the forwarded symref directly.
+                    // Skip the morph on compressed-refs JVMs where a compressedRefs
+                    // parent requires the original aloadi opcode.
                     if (node->getReferenceCount() > 1
-                        && storedValue->getNumChildren() == 0
                         && !vp->comp()->useCompressedPointers())
                         {
                         vp->removeChildren(node);
@@ -4244,6 +4236,26 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             }
 
                         TR::Node *valueChild = wrtbar->getChild(1);
+
+                        // Reject stores whose value is an aload of a non-parameter Auto.
+                        // Auto temps are per-inlining-scope: when multiple inlined copies
+                        // of the same callee all resolve (via use-def) to the same anewarray
+                        // node, stores from the "wrong" copy appear in the forward scan and
+                        // may be encountered before the original stores.  Forwarding an aload
+                        // of an Auto from a different inlined copy places a value that is only
+                        // live on that copy's path, yielding null (or garbage) on other paths.
+                        if (valueChild->getOpCode().isLoadVarDirect()
+                            && valueChild->getOpCode().hasSymbolReference()
+                            && valueChild->getSymbol()->isAutoOrParm()
+                            && !valueChild->getSymbol()->isParm())
+                            {
+                            if (vp->trace())
+                                logprintf(vp->trace(), vp->comp()->log(),
+                                    "VP ARRAY FORWARD:   skip n%dn: value n%dn is aload of Auto (path-dependent)\n",
+                                    wrtbar->getGlobalIndex(), valueChild->getGlobalIndex());
+                            continue;
+                            }
+
                         int64_t offset = offsetNode->getOpCode().isLong()
                             ? offsetNode->getLongInt()
                             : (int64_t)offsetNode->getInt();
@@ -4256,12 +4268,45 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                         CS2::HashIndex idx;
                         if (!vp->_arrayShadowForwardingMap.Locate(key, idx))
                             {
-                            vp->_arrayShadowForwardingMap.Add(key, valueChild);
+                            // If the stored value is not a leaf node (e.g. it is an acall,
+                            // allocation, or arithmetic expression), sharing it directly
+                            // across block boundaries is unsafe: the node would be re-evaluated
+                            // in the wrong block, or its result would be live outside its
+                            // original block's scope.
+                            //
+                            // Privatize by inserting  astore <new Auto> = valueChild  immediately
+                            // before the awrtbari's treetop, then record aload <new Auto> as the
+                            // forwarded value.  The aload is a leaf and is safe to share anywhere
+                            // in the same compilation.
+                            TR::Node *forwardedValue = valueChild;
+                            if (valueChild->getNumChildren() > 0)
+                                {
+                                TR::SymbolReference *tempSymRef =
+                                    vp->comp()->getSymRefTab()->createTemporary(
+                                        vp->comp()->getMethodSymbol(), TR::Address);
+                                TR::Node *astoreNode = TR::Node::createWithSymRef(
+                                    TR::astore, 1, 1, valueChild, tempSymRef);
+                                TR::TreeTop *astoreTT = TR::TreeTop::create(
+                                    vp->comp(), astoreNode, NULL, NULL);
+                                // Insert the astore immediately before the awrtbari's
+                                // wrapper treetop so the temp is defined before the store.
+                                ftt->insertBefore(astoreTT);
+                                forwardedValue = TR::Node::createWithSymRef(
+                                    TR::aload, 0, tempSymRef);
+                                forwardedValue->setReferenceCount(1);
+                                if (vp->trace())
+                                    logprintf(vp->trace(), vp->comp()->log(),
+                                        "VP ARRAY FORWARD:   privatized value n%dn into astore/aload temp #%d\n",
+                                        valueChild->getGlobalIndex(),
+                                        tempSymRef->getReferenceNumber());
+                                }
+
+                            vp->_arrayShadowForwardingMap.Add(key, forwardedValue);
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
                                     "VP ARRAY FORWARD:   mapped [anewarray n%dn offset %lld] -> value n%dn [" POINTER_PRINTF_FORMAT "]\n",
                                     node->getGlobalIndex(), (long long)offset,
-                                    valueChild->getGlobalIndex(), valueChild);
+                                    forwardedValue->getGlobalIndex(), forwardedValue);
                             }
                         else if (vp->trace())
                             logprintf(vp->trace(), vp->comp()->log(),

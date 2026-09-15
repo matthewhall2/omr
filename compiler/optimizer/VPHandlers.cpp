@@ -2095,6 +2095,9 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                                 logprintf(vp->trace(), vp->comp()->log(),
                                     "VP ARRAY FORWARD:   removing forwarded store treetop n%dn\n",
                                     storeTT->getNode()->getGlobalIndex());
+                            // removeNode handles use-def cleanup (prepareForNodeRemoval
+                            // with deferInvalidatingUseDefInfo) before the treetop splice.
+                            vp->removeNode(storeTT->getNode(), false);
                             TR::TransformUtil::removeTree(vp->comp(), storeTT);
                             vp->_arrayShadowStoreTTMap[storeTTIdx] = NULL;
                             }

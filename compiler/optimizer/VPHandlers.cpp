@@ -4256,23 +4256,54 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
 
                         TR::Node *valueChild = wrtbar->getChild(1);
 
-                        // Reject stores whose value is an aload of a non-parameter Auto.
-                        // Auto temps are per-inlining-scope: when multiple inlined copies
-                        // of the same callee all resolve (via use-def) to the same anewarray
-                        // node, stores from the "wrong" copy appear in the forward scan and
-                        // may be encountered before the original stores.  Forwarding an aload
-                        // of an Auto from a different inlined copy places a value that is only
-                        // live on that copy's path, yielding null (or garbage) on other paths.
+                        // For an aload of a non-parameter Auto, use use-def to decide
+                        // whether it is safe to forward.  The concern is path-dependent
+                        // Autos: when multiple inlined copies of the same callee all
+                        // resolve to the same anewarray, stores from the "wrong" copy
+                        // show up in the scan with an Auto whose def lives on a different
+                        // path.  Those have multiple reaching defs (one per inlined copy).
+                        //
+                        // Autos created by uncommoning (e.g. opcodeExpansion capturing an
+                        // acall result with rc>1) have exactly one def that dominates here
+                        // and are safe to forward.
+                        //
+                        // Rule: skip if (a) no use-def info, (b) no use index, (c) use-def
+                        // returns != 1 def, or (d) the single def is the entry def.
                         if (valueChild->getOpCode().isLoadVarDirect()
                             && valueChild->getOpCode().hasSymbolReference()
                             && valueChild->getSymbol()->isAutoOrParm()
                             && !valueChild->getSymbol()->isParm())
                             {
+                            bool skipValue = true;
+                            if (useDefInfo)
+                                {
+                                uint16_t valUseIdx = valueChild->getUseDefIndex();
+                                if (useDefInfo->isUseIndex(valUseIdx))
+                                    {
+                                    TR_UseDefInfo::BitVector valDefs(vp->comp()->allocator());
+                                    if (useDefInfo->getUseDef(valDefs, valUseIdx)
+                                        && valDefs.PopulationCount() == 1)
+                                        {
+                                        TR_UseDefInfo::BitVector::Cursor vc(valDefs);
+                                        vc.SetToFirstOne();
+                                        int32_t valDefIdx = vc;
+                                        if (valDefIdx >= useDefInfo->getFirstRealDefIndex())
+                                            skipValue = false; // single non-entry def — safe
+                                        }
+                                    }
+                                }
+                            if (skipValue)
+                                {
+                                if (vp->trace())
+                                    logprintf(vp->trace(), vp->comp()->log(),
+                                        "VP ARRAY FORWARD:   skip n%dn: value n%dn is aload of Auto with ambiguous def\n",
+                                        wrtbar->getGlobalIndex(), valueChild->getGlobalIndex());
+                                continue;
+                                }
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:   skip n%dn: value n%dn is aload of Auto (path-dependent)\n",
-                                    wrtbar->getGlobalIndex(), valueChild->getGlobalIndex());
-                            continue;
+                                    "VP ARRAY FORWARD:   value n%dn is aload of single-def Auto — safe to forward\n",
+                                    valueChild->getGlobalIndex());
                             }
 
                         int64_t offset = offsetNode->getOpCode().isLong()

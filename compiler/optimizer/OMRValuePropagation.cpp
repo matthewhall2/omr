@@ -6606,6 +6606,25 @@ bool OMR::ValuePropagation::canClassBeTrustedAsFixedClass(TR::SymbolReference *s
 void OMR::ValuePropagation::doDelayedTransformations()
 {
     OMR::Logger *log = comp()->log();
+
+    // Remove awrtbari treetops whose values were fully forwarded to all
+    // consuming aloadi nodes.  Done here (after the use-def assertion check
+    // in GVP::perform) so that prepareForNodeRemoval cannot fire
+    // setUseDefInfo(NULL) and trip that assertion.
+    {
+    ListIterator<TR::TreeTop> fwdIt(&_forwardedStoreTreesToRemove);
+    for (TR::TreeTop *storeTT = fwdIt.getFirst(); storeTT; storeTT = fwdIt.getNext())
+        {
+        if (trace())
+            logprintf(trace(), log,
+                "VP ARRAY FORWARD:   (delayed) removing forwarded store treetop n%dn\n",
+                storeTT->getNode() ? storeTT->getNode()->getGlobalIndex() : -1);
+        removeNode(storeTT->getNode(), false);
+        TR::TransformUtil::removeTree(comp(), storeTT);
+        }
+    _forwardedStoreTreesToRemove.deleteAll();
+    }
+
     ListIterator<TR_TreeTopNodePair> treesIt1(&_scalarizedArrayCopies);
     TR_TreeTopNodePair *scalarizedArrayCopy;
     for (scalarizedArrayCopy = treesIt1.getFirst(); scalarizedArrayCopy; scalarizedArrayCopy = treesIt1.getNext()) {

@@ -992,6 +992,10 @@ public:
     // constrainAloadi knows not to delete either store.
     CS2::HashTable<uint64_t, TR::TreeTop *, TR::Allocator> _arrayShadowStoreTTMap;
 
+    // Forwarded awrtbari treetops to remove in doDelayedTransformations, after
+    // the use-def assertion check in GVP::perform() has already passed.
+    TR_ScratchList<TR::TreeTop> _forwardedStoreTreesToRemove;
+
     // Flags
     //
     bool lastTimeThrough() { return _lastTimeThrough; }

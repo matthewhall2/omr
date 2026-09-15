@@ -2081,10 +2081,10 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                     if (fwdConstraint)
                         vp->addBlockConstraint(node, fwdConstraint);
 
-                    // If this slot was written exactly once, its awrtbari treetop is now
-                    // dead: every load has been (or will be) replaced by the forwarded
-                    // value.  Remove it the first time we forward from this slot; clear
-                    // the entry so subsequent loads for the same slot don't remove it again.
+                    // If this slot was written exactly once, mark its awrtbari treetop for
+                    // deferred removal (done in doDelayedTransformations, after the use-def
+                    // assertion check in GVP::perform).  Null the entry now so that a second
+                    // forwarded load from the same slot does not re-queue it.
                     CS2::HashIndex storeTTIdx;
                     if (vp->_arrayShadowStoreTTMap.Locate(key, storeTTIdx))
                         {
@@ -2093,12 +2093,9 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                             {
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:   removing forwarded store treetop n%dn\n",
+                                    "VP ARRAY FORWARD:   queuing forwarded store treetop n%dn for removal\n",
                                     storeTT->getNode()->getGlobalIndex());
-                            // removeNode handles use-def cleanup (prepareForNodeRemoval
-                            // with deferInvalidatingUseDefInfo) before the treetop splice.
-                            vp->removeNode(storeTT->getNode(), false);
-                            TR::TransformUtil::removeTree(vp->comp(), storeTT);
+                            vp->_forwardedStoreTreesToRemove.add(storeTT);
                             vp->_arrayShadowStoreTTMap[storeTTIdx] = NULL;
                             }
                         }

@@ -980,11 +980,17 @@ public:
     TR_ValueNumberInfo *_valueNumberInfo; // Cached value number info
     CS2::HashTable<uint64_t, TR::list<TR::Node *> *, TR::Allocator> _constNodeInfo;
 
-    // Map from aladd/aiadd node pointer (cast to uint64_t) to the value node
-    // stored into that array slot by a dominating awrtbari on a non-escaping
+    // Map from (anewarray_ptr << 32 | offset) to the value node stored into
+    // that array slot by a dominating awrtbari on a non-escaping
     // allocationCanBeRemoved array.  Populated by constrainANewArray /
     // constrainNewArray during GVP; consumed by constrainAloadi.
     CS2::HashTable<uint64_t, TR::Node *, TR::Allocator> _arrayShadowForwardingMap;
+
+    // Parallel map from the same key to the TR::TreeTop * of the awrtbari that
+    // wrote that slot.  Only populated for slots written exactly once: if a
+    // second awrtbari writes the same slot the entry is set to NULL so that
+    // constrainAloadi knows not to delete either store.
+    CS2::HashTable<uint64_t, TR::TreeTop *, TR::Allocator> _arrayShadowStoreTTMap;
 
     // Flags
     //

@@ -2081,6 +2081,25 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                     if (fwdConstraint)
                         vp->addBlockConstraint(node, fwdConstraint);
 
+                    // If this slot was written exactly once, its awrtbari treetop is now
+                    // dead: every load has been (or will be) replaced by the forwarded
+                    // value.  Remove it the first time we forward from this slot; clear
+                    // the entry so subsequent loads for the same slot don't remove it again.
+                    CS2::HashIndex storeTTIdx;
+                    if (vp->_arrayShadowStoreTTMap.Locate(key, storeTTIdx))
+                        {
+                        TR::TreeTop *storeTT = vp->_arrayShadowStoreTTMap[storeTTIdx];
+                        if (storeTT != NULL)
+                            {
+                            if (vp->trace())
+                                logprintf(vp->trace(), vp->comp()->log(),
+                                    "VP ARRAY FORWARD:   removing forwarded store treetop n%dn\n",
+                                    storeTT->getNode()->getGlobalIndex());
+                            TR::TransformUtil::removeTree(vp->comp(), storeTT);
+                            vp->_arrayShadowStoreTTMap[storeTTIdx] = NULL;
+                            }
+                        }
+
                     // storedValue has no children — it is safe to share across blocks
                     // (aload of parm/auto, aconst, etc.).  Morph the aloadi in-place
                     // when rc > 1 so all consumers see the forwarded symref directly.
@@ -4302,17 +4321,27 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                 }
 
                             vp->_arrayShadowForwardingMap.Add(key, forwardedValue);
+                            vp->_arrayShadowStoreTTMap.Add(key, ftt);
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
                                     "VP ARRAY FORWARD:   mapped [anewarray n%dn offset %lld] -> value n%dn [" POINTER_PRINTF_FORMAT "]\n",
                                     node->getGlobalIndex(), (long long)offset,
                                     forwardedValue->getGlobalIndex(), forwardedValue);
                             }
-                        else if (vp->trace())
-                            logprintf(vp->trace(), vp->comp()->log(),
-                                "VP ARRAY FORWARD:   slot [anewarray n%dn offset %lld] already mapped, skipping n%dn\n",
-                                node->getGlobalIndex(), (long long)offset,
-                                wrtbar->getGlobalIndex());
+                        else
+                            {
+                            // A second store to the same slot: we can no longer prove which
+                            // value is live at the load, so poison the store-TT entry so
+                            // constrainAloadi will not delete either store.
+                            CS2::HashIndex storeTTIdx;
+                            if (vp->_arrayShadowStoreTTMap.Locate(key, storeTTIdx))
+                                vp->_arrayShadowStoreTTMap[storeTTIdx] = NULL;
+                            if (vp->trace())
+                                logprintf(vp->trace(), vp->comp()->log(),
+                                    "VP ARRAY FORWARD:   slot [anewarray n%dn offset %lld] already mapped, skipping n%dn (store-TT poisoned)\n",
+                                    node->getGlobalIndex(), (long long)offset,
+                                    wrtbar->getGlobalIndex());
+                            }
                         }
                     }
                 } // if (arrayClass)

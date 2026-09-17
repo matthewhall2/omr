@@ -1544,7 +1544,7 @@ bool OMR::SmallOptimizer::prepareForNodeRemoval(TR::Node *node, bool deferInvali
     for (int32_t i = node->getNumChildren() - 1; i >= 0; i--) {
         TR::Node *child = node->getChild(i);
         if (child != NULL && child->getReferenceCount() == 1)
-            if (prepareForNodeRemoval(child))
+            if (prepareForNodeRemoval(child, deferInvalidatingUseDefInfo))
                 useDefInfoAreInvalid = true;
     }
     return useDefInfoAreInvalid;

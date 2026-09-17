@@ -3558,9 +3558,9 @@ int32_t TR::GlobalValuePropagation::perform()
     setIntersectionFailed(false);
 
     getParmValues();
-    optimizer()->_inGVPWalk = true;
+    optimizer()->setInGVPWalk(true);
     determineConstraints();
-    optimizer()->_inGVPWalk = false;
+    optimizer()->setInGVPWalk(false);
 
     // If there are deep chains of value numbers related to each other
     // disable future passes of value propagation

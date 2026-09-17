@@ -3559,7 +3559,15 @@ int32_t TR::GlobalValuePropagation::perform()
 
     getParmValues();
     optimizer()->setInGVPWalk(true);
-    determineConstraints();
+    try
+        {
+        determineConstraints();
+        }
+    catch (...)
+        {
+        optimizer()->setInGVPWalk(false);
+        throw;
+        }
     optimizer()->setInGVPWalk(false);
 
     // If there are deep chains of value numbers related to each other

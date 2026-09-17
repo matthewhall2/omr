@@ -238,6 +238,7 @@ OMR::SmallOptimizer::SmallOptimizer(TR::Compilation *comp, TR::ResolvedMethodSym
     , _stackedOptimizer(false)
     , _firstTimeStructureIsBuilt(true)
     , _disableLoopOptsThatCanCreateLoops(false)
+    , _inGVPWalk(false)
 {
     // zero opts table
     memset(_opts, 0, sizeof(_opts));
@@ -354,6 +355,8 @@ TR_UseDefInfo *OMR::SmallOptimizer::setUseDefInfo(TR_UseDefInfo *u)
 {
     if (_useDefInfo != NULL) {
         dumpOptDetails(comp(), "     (Invalidating use/def info)\n");
+        TR_ASSERT_FATAL(_inGVPWalk == false,
+            "setUseDefInfo(NULL) called during Global VP walk — use-def info would be deleted while GVP holds a cached pointer\n");
         delete _useDefInfo;
     }
     return (_useDefInfo = u);

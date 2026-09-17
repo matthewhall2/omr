@@ -3590,9 +3590,20 @@ int32_t TR::GlobalValuePropagation::perform()
     // is explicitly requested to be preserved.  This is just a safety check that
     // the use/def info has been preserved throughout the processing of Global VP.
     //
+    // Note: optimizer()->getUseDefInfo() == NULL is tolerated here — it means
+    // some transformation called setUseDefInfo(NULL) eagerly during the walk
+    // (e.g. via prepareForNodeRemoval with defer=false on a use+def node).
+    // The flag-based cleanup at the end of perform() handles that correctly.
+    // What we must not allow is the pointer being replaced with a *different*
+    // non-NULL object, which would mean a new use-def computation was installed
+    // mid-walk while we still hold a stale cached pointer.
+    //
     if (_useDefInfo != NULL) {
-        TR_ASSERT_FATAL(optimizer()->getUseDefInfo() == _useDefInfo,
-            "Use/def info was unexpectedly destroyed during Global Value Propagation\n");
+        TR_UseDefInfo *currentUDI = optimizer()->getUseDefInfo();
+        TR_ASSERT_FATAL(currentUDI == _useDefInfo || currentUDI == NULL,
+            "Use/def info was unexpectedly replaced during Global Value Propagation\n");
+        if (currentUDI == NULL)
+            invalidateUseDefInfo();
     }
 
     // Perform transformations that were delayed until the end of the analysis

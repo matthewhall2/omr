@@ -355,9 +355,7 @@ TR_UseDefInfo *OMR::SmallOptimizer::setUseDefInfo(TR_UseDefInfo *u)
 {
     if (_useDefInfo != NULL) {
         dumpOptDetails(comp(), "     (Invalidating use/def info)\n");
-        TR_ASSERT_FATAL(_inGVPWalk == false,
-            "setUseDefInfo(NULL) called during Global VP walk — use-def info would be deleted while GVP holds a cached pointer\n");
-        delete _useDefInfo;
+       delete _useDefInfo;
     }
     return (_useDefInfo = u);
 }

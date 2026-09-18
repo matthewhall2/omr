@@ -2078,8 +2078,13 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                     {
                     bool isGlobalFwd = false;
                     TR::VPConstraint *fwdConstraint = vp->getConstraint(storedValue, isGlobalFwd);
+                    // Use addGlobalConstraint: the aloadi is shared (rc > 1) so its
+                    // consumers may be in different blocks from the current one.
+                    // addBlockConstraint only survives within _curConstraints for the
+                    // current block; addGlobalConstraint persists for the whole GVP
+                    // pass and is visible to getConstraint in any block.
                     if (fwdConstraint)
-                        vp->addBlockConstraint(node, fwdConstraint);
+                        vp->addGlobalConstraint(node, fwdConstraint);
 
                     // If this slot was written exactly once, mark its awrtbari treetop for
                     // deferred removal (done in doDelayedTransformations, after the use-def
@@ -2112,13 +2117,27 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                         // Morphing here (during the GVP walk) would call removeChildren,
                         // which can invoke setUseDefInfo(NULL) while _inGVPWalk is true,
                         // tripping the assertion in SmallOptimizer::setUseDefInfo.
-                        vp->_pendingAlloadiMorphs.add(
-                            new (vp->trHeapMemory()) TR_Pair<TR::Node, TR::Node>(node, storedValue));
-                        if (vp->trace())
-                            logprintf(vp->trace(), vp->comp()->log(),
-                                "VP ARRAY FORWARD:   queued shared aloadi n%dn for deferred morph to %s\n",
-                                node->getGlobalIndex(),
-                                storedValue->getOpCode().getName());
+                        //
+                        // If the forwarded constraint was not yet available (storedValue's
+                        // privatised astore<temp> not yet visited, mergeDefConstraints
+                        // returned null and addBlockConstraint was skipped above), queue
+                        // the morph now and reset the visit count so VP re-visits this
+                        // aloadi as a child of later consumers (e.g. instanceof, checkcast).
+                        // On that second visit the astore<temp> will have been processed
+                        // and the constraint will be available, allowing those consumers
+                        // to fold — but the morph is not re-queued on the second visit
+                        // (fwdConstraint will be non-null then).
+                        if (!fwdConstraint)
+                            {
+                            vp->_pendingAlloadiMorphs.add(
+                                new (vp->trHeapMemory()) TR_Pair<TR::Node, TR::Node>(node, storedValue));
+                            if (vp->trace())
+                                logprintf(vp->trace(), vp->comp()->log(),
+                                    "VP ARRAY FORWARD:   queued shared aloadi n%dn for deferred morph to %s\n",
+                                    node->getGlobalIndex(),
+                                    storedValue->getOpCode().getName());
+                            node->setVisitCount(0);
+                            }
                         return node;
                         }
 

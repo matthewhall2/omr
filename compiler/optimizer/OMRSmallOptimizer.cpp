@@ -355,7 +355,7 @@ TR_UseDefInfo *OMR::SmallOptimizer::setUseDefInfo(TR_UseDefInfo *u)
 {
     if (_useDefInfo != NULL) {
         dumpOptDetails(comp(), "     (Invalidating use/def info)\n");
-       delete _useDefInfo;
+        delete _useDefInfo;
     }
     return (_useDefInfo = u);
 }
@@ -1545,7 +1545,7 @@ bool OMR::SmallOptimizer::prepareForNodeRemoval(TR::Node *node, bool deferInvali
     for (int32_t i = node->getNumChildren() - 1; i >= 0; i--) {
         TR::Node *child = node->getChild(i);
         if (child != NULL && child->getReferenceCount() == 1)
-            if (prepareForNodeRemoval(child))
+            if (prepareForNodeRemoval(child, deferInvalidatingUseDefInfo))
                 useDefInfoAreInvalid = true;
     }
     return useDefInfoAreInvalid;

@@ -2113,7 +2113,7 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                         // which can invoke setUseDefInfo(NULL) while _inGVPWalk is true,
                         // tripping the assertion in SmallOptimizer::setUseDefInfo.
                         vp->_pendingAlloadiMorphs.add(
-                            new (vp->trMemory()) TR_Pair<TR::Node, TR::Node>(node, storedValue));
+                            new (vp->trHeapMemory()) TR_Pair<TR::Node, TR::Node>(node, storedValue));
                         if (vp->trace())
                             logprintf(vp->trace(), vp->comp()->log(),
                                 "VP ARRAY FORWARD:   queued shared aloadi n%dn for deferred morph to %s\n",

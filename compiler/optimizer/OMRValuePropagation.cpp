@@ -6635,6 +6635,34 @@ void OMR::ValuePropagation::doDelayedTransformations()
     _forwardedStoreTreesToRemove.deleteAll();
     }
 
+    // Execute deferred in-place morphs for shared (rc > 1) aloadi nodes that
+    // were forwarded to a known stored value during the GVP walk.  Done here
+    // (after _inGVPWalk is cleared and the use-def assertion in GVP::perform
+    // has passed) so that removeChildren cannot call setUseDefInfo(NULL) while
+    // GVP's cached use-def pointer is still live.
+    {
+    ListIterator<TR_Pair<TR::Node, TR::Node>> morphIt(&_pendingAlloadiMorphs);
+    for (TR_Pair<TR::Node, TR::Node> *p = morphIt.getFirst(); p; p = morphIt.getNext())
+        {
+        TR::Node *load        = p->getKey();
+        TR::Node *storedValue = p->getValue();
+        removeChildren(load);
+        if (storedValue->getOpCode().hasSymbolReference())
+            TR::Node::recreateWithSymRef(load, storedValue->getOpCodeValue(),
+                                        storedValue->getSymbolReference());
+        else
+            TR::Node::recreate(load, storedValue->getOpCodeValue());
+        invalidateUseDefInfo();
+        invalidateValueNumberInfo();
+        if (trace())
+            logprintf(trace(), log,
+                "VP ARRAY FORWARD:   (delayed) morphed shared aloadi n%dn in-place to %s\n",
+                load->getGlobalIndex(),
+                storedValue->getOpCode().getName());
+        }
+    _pendingAlloadiMorphs.deleteAll();
+    }
+
     ListIterator<TR_TreeTopNodePair> treesIt1(&_scalarizedArrayCopies);
     TR_TreeTopNodePair *scalarizedArrayCopy;
     for (scalarizedArrayCopy = treesIt1.getFirst(); scalarizedArrayCopy; scalarizedArrayCopy = treesIt1.getNext()) {

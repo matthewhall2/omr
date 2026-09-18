@@ -2108,17 +2108,15 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                     if (node->getReferenceCount() > 1
                         && !vp->comp()->useCompressedPointers())
                         {
-                        vp->removeChildren(node);
-                        if (storedValue->getOpCode().hasSymbolReference())
-                            TR::Node::recreateWithSymRef(node, storedValue->getOpCodeValue(),
-                                                        storedValue->getSymbolReference());
-                        else
-                            TR::Node::recreate(node, storedValue->getOpCodeValue());
-                        vp->invalidateUseDefInfo();
-                        vp->invalidateValueNumberInfo();
+                        // Defer the in-place morph to doDelayedTransformations.
+                        // Morphing here (during the GVP walk) would call removeChildren,
+                        // which can invoke setUseDefInfo(NULL) while _inGVPWalk is true,
+                        // tripping the assertion in SmallOptimizer::setUseDefInfo.
+                        vp->_pendingAlloadiMorphs.add(
+                            new (vp->trMemory()) TR_Pair<TR::Node, TR::Node>(node, storedValue));
                         if (vp->trace())
                             logprintf(vp->trace(), vp->comp()->log(),
-                                "VP ARRAY FORWARD:   morphed shared aloadi n%dn in-place to %s\n",
+                                "VP ARRAY FORWARD:   queued shared aloadi n%dn for deferred morph to %s\n",
                                 node->getGlobalIndex(),
                                 storedValue->getOpCode().getName());
                         return node;

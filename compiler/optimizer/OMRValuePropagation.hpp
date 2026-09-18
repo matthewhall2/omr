@@ -996,6 +996,14 @@ public:
     // the use-def assertion check in GVP::perform() has already passed.
     TR_ScratchList<TR::TreeTop> _forwardedStoreTreesToRemove;
 
+    // Pending in-place aloadi→aload morphs for shared (rc > 1) nodes.
+    // Queued during the GVP walk; executed in doDelayedTransformations after
+    // _inGVPWalk is cleared so that removeChildren cannot call setUseDefInfo(NULL)
+    // while the walk's cached use-def pointer is still live.
+    // key = the aloadi node to morph; value = the forwarded value node whose
+    // opcode/symref to adopt.
+    TR_ScratchList<TR_Pair<TR::Node, TR::Node>> _pendingAlloadiMorphs;
+
     // Flags
     //
     bool lastTimeThrough() { return _lastTimeThrough; }

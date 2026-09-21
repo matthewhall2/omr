@@ -2093,7 +2093,7 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                     // aconst NULL would leave the NULLCHK with a leaf child and make
                     // getNullCheckReference() return null, corrupting the tree.  The
                     // always-throws case is better left to other passes.
-                    && !storedValue->getOpCode().isNull()
+                    && !(storedValue->getOpCodeValue() == TR::aconst && storedValue->getAddress() == 0)
                     && performTransformation(vp->comp(),
                         "%sVP ARRAY FORWARD: replacing aloadi n%dn [" POINTER_PRINTF_FORMAT "] "
                         "with forwarded value n%dn [" POINTER_PRINTF_FORMAT "]\n",

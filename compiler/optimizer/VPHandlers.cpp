@@ -2166,18 +2166,21 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                         }
 
                     storedValue->incReferenceCount();
-                    // Use deferInvalidatingUseDefInfo=true so that prepareForNodeRemoval
-                    // does not call setUseDefInfo(NULL) while GVP holds a cached use-def
-                    // pointer — that would destroy the object and trip the assertion in
-                    // GVP::perform.  For a pure use node (the normal case for aloadi)
-                    // this only resets the cached def-use bitvectors and zeroes the
-                    // index with no invalidation needed.  For the rare combined use+def
-                    // case the deferred flag propagates to GVP::perform after the
-                    // assertion check — the same pattern as removeNode() in
-                    // ValuePropagationCommon.cpp.
+                    // Decrement only node's own rc by 1 — for the single reference
+                    // being replaced by storedValue in this parent.  Do not use
+                    // recursivelyDecReferenceCount: node may still be referenced by
+                    // other parents (e.g. a NULLCHK treetop) and its children must
+                    // remain live for those uses.  recursivelyDecReferenceCount would
+                    // free the children when rc drops to 0 on the last replacement,
+                    // but those children are still reachable via the other parents
+                    // that have not yet been forwarded.
+                    //
+                    // Use deferInvalidatingUseDefInfo=true so prepareForNodeRemoval
+                    // does not call setUseDefInfo(NULL) while GVP holds a cached
+                    // use-def pointer.
                     if (vp->optimizer()->prepareForNodeRemoval(node, /* deferInvalidatingUseDefInfo = */ true))
                         vp->invalidateUseDefInfo();
-                    node->recursivelyDecReferenceCount();
+                    node->decReferenceCount();
                     // If other treetops still reference this node, reset the visit
                     // count so VP re-processes those uses and replaces them too.
                     if (node->getReferenceCount() > 0)

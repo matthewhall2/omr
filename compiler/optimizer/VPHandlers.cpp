@@ -2142,7 +2142,21 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                         }
 
                     storedValue->incReferenceCount();
-                    vp->prepareToStopUsingNode(node, vp->_curTree);
+                    // Clear the node's slot in the use-def table before zeroing the
+                    // index, so the table does not retain a dangling pointer to a node
+                    // that is being dropped.  This mirrors the pattern at line 7211.
+                    // We do not go through prepareToStopUsingNode / prepareForNodeRemoval
+                    // because those paths call setUseDefInfo(NULL) when the node has a
+                    // combined use+def index, which would destroy the use-def object
+                    // while GVP still holds a cached pointer to it (triggering the
+                    // assertion in GVP::perform).
+                    int32_t useIndex = node->getUseDefIndex();
+                    TR_UseDefInfo *info = vp->optimizer()->getUseDefInfo();
+                    if (info && (info->isDefIndex(useIndex) || info->isUseIndex(useIndex)))
+                        if (info->getNode(useIndex) == node)
+                            info->clearNode(useIndex);
+                    node->setUseDefIndex(0);
+                    vp->invalidateUseDefInfo();
                     node->recursivelyDecReferenceCount();
                     // If other treetops still reference this node, reset the visit
                     // count so VP re-processes those uses and replaces them too.

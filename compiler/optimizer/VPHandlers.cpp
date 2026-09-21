@@ -2088,11 +2088,12 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                     // privatizing Auto temp we inserted during the store scan).  It is
                     // safe to share across block boundaries.
                     && storedValue->getNumChildren() == 0
-                    && (fprintf(stderr,
-                            "VP ARRAY FORWARD DBG: aloadi n%dn parent=%s n%dn\n",
-                            node->getGlobalIndex(),
-                            curParent ? curParent->getOpCode().getName() : "(null)",
-                            curParent ? curParent->getGlobalIndex() : -1), true)
+                    // Do not forward a null constant: if this aloadi is under a NULLCHK
+                    // (possibly via a different parent than curParent), replacing it with
+                    // aconst NULL would leave the NULLCHK with a leaf child and make
+                    // getNullCheckReference() return null, corrupting the tree.  The
+                    // always-throws case is better left to other passes.
+                    && !storedValue->getOpCode().isNull()
                     && performTransformation(vp->comp(),
                         "%sVP ARRAY FORWARD: replacing aloadi n%dn [" POINTER_PRINTF_FORMAT "] "
                         "with forwarded value n%dn [" POINTER_PRINTF_FORMAT "]\n",

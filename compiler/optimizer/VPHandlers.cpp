@@ -2053,6 +2053,25 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                 TR::Node *curParent = vp->getCurrentParent();
                 if (storedValue != NULL
                     && curParent != NULL
+                    && curParent->getOpCode().isNullCheck())
+                    {
+                    // The storedValue came from a non-escaping anewarray, so the
+                    // base pointer is provably non-null.  Convert the NULLCHK to a
+                    // treetop in-place (preserving its child subtree), then reset
+                    // the aloadi's visit count so it is forwarded on the next visit
+                    // as an ordinary treetop child.
+                    if (vp->trace())
+                        logprintf(vp->trace(), vp->comp()->log(),
+                            "VP ARRAY FORWARD:   removing NULLCHK n%dn: base is non-null anewarray, "
+                            "will forward aloadi n%dn at next visit\n",
+                            curParent->getGlobalIndex(),
+                            node->getGlobalIndex());
+                    TR::Node::recreate(curParent, TR::treetop);
+                    vp->setChecksRemoved();
+                    node->setVisitCount(0);
+                    }
+                else if (storedValue != NULL
+                    && curParent != NULL
                     && curParent->getOpCodeValue() == TR::compressedRefs)
                     {
                     // Reset visit count so the non-compressedRefs consumer gets

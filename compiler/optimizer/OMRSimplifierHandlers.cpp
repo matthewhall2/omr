@@ -15774,6 +15774,7 @@ TR::Node *tableSwitchSimplifier(TR::Node *node, TR::Block *block, TR::Simplifier
 //
 TR::Node *nullchkSimplifier(TR::Node *node, TR::Block *block, TR::Simplifier *s)
 {
+    TR_ASSERT_FATAL_WITH_NODE(node, NULL != node && node->getNumChildren() >= 1 && node->getFirstChild()->getNumChildren() >= 1, "bad nullchk node");
     TR::ILOpCodes nullCheckRefOp = node->getNullCheckReference()->getOpCodeValue();
     if (nullCheckRefOp == TR::New || nullCheckRefOp == TR::newarray || nullCheckRefOp == TR::anewarray
         || nullCheckRefOp == TR::multianewarray) {

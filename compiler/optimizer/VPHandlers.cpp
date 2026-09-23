@@ -2018,7 +2018,11 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
 
             if (anewArrayNode != NULL)
                 {
-                uint64_t key = ((uint64_t)(uintptr_t)anewArrayNode << 32)
+                // Key: upper 32 bits = node's global index (unique within the compilation),
+                //      lower 32 bits = offset.
+                // Using the raw pointer truncated to 32 bits is wrong on 64-bit systems:
+                // two nodes whose addresses differ only in the upper 32 bits would collide.
+                uint64_t key = ((uint64_t)(uint32_t)anewArrayNode->getGlobalIndex() << 32)
                                | (uint64_t)(uint32_t)offset;
                 CS2::HashIndex idx;
                 TR::Node *storedValue = NULL;
@@ -2103,12 +2107,13 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                     {
                     bool isGlobalFwd = false;
                     TR::VPConstraint *fwdConstraint = vp->getConstraint(storedValue, isGlobalFwd);
-                    // Use addGlobalConstraint: the aloadi is shared (rc > 1) so its
-                    // consumers may be in different blocks from the current one.
-                    // addBlockConstraint only survives within _curConstraints for the
-                    // current block; addGlobalConstraint persists for the whole GVP
-                    // pass and is visible to getConstraint in any block.
-                    if (fwdConstraint)
+                    // Only propagate the constraint globally if it was itself established
+                    // as a global constraint at the store site.  A block-local constraint
+                    // is only valid in the block that contains the awrtbari; broadcasting
+                    // it via addGlobalConstraint to all subsequent GVP blocks can cause
+                    // checkcast/instanceof to be incorrectly eliminated in blocks where
+                    // the narrower type does not hold, yielding a bad object reference.
+                    if (fwdConstraint && isGlobalFwd)
                         vp->addGlobalConstraint(node, fwdConstraint);
 
                     // If this slot was written exactly once, mark its awrtbari treetop for
@@ -4366,9 +4371,11 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             ? offsetNode->getLongInt()
                             : (int64_t)offsetNode->getInt();
 
-                        // Key: upper 32 bits = low 32 of anewarray ptr,
-                        //      lower 32 bits = offset.
-                        uint64_t key = ((uint64_t)(uintptr_t)node << 32)
+                        // Key: upper 32 bits = node's global index (unique within the
+                        //      compilation), lower 32 bits = offset.
+                        // Using a raw pointer truncated to 32 bits is wrong on 64-bit
+                        // systems where two nodes can share the same low 32 address bits.
+                        uint64_t key = ((uint64_t)(uint32_t)node->getGlobalIndex() << 32)
                                        | (uint64_t)(uint32_t)offset;
 
                         CS2::HashIndex idx;

@@ -2135,13 +2135,23 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                             }
                         }
 
-                    // storedValue has no children — it is safe to share across blocks
-                    // (aload of parm/auto, aconst, etc.).  Morph the aloadi in-place
-                    // when rc > 1 so all consumers see the forwarded symref directly.
-                    // Skip the morph on compressed-refs JVMs where a compressedRefs
-                    // parent requires the original aloadi opcode.
-                    if (node->getReferenceCount() > 1
-                        && !vp->comp()->useCompressedPointers())
+                    // When rc > 1 the aloadi is referenced by multiple parents.
+                    // Replacing only the current parent's child pointer with
+                    // storedValue while other parents (including a compressedRefs
+                    // anchor) still hold the original aloadi creates inconsistent
+                    // IL: one consumer sees a full decompressed reference (via
+                    // aload <T>), while the compressedRefs anchor still evaluates
+                    // the original aloadi through lowerCompressedRefs, producing
+                    // an independent second copy.  On compressed-refs JVMs this
+                    // split causes the wrong value to be passed to call arguments,
+                    // resulting in IllegalArgumentException at runtime.
+                    //
+                    // Instead, defer an in-place morph of the aloadi node itself
+                    // to doDelayedTransformations.  All parents then see the same
+                    // node, now bearing the aload opcode/symref.  The compressedRefs
+                    // anchor is left with an aload child; lowerCompressedRefs detects
+                    // that the child is no longer an aloadi/astorei and skips it.
+                    if (node->getReferenceCount() > 1)
                         {
                         // Defer the in-place morph to doDelayedTransformations.
                         // Morphing here (during the GVP walk) would call removeChildren,

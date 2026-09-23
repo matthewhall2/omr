@@ -2076,16 +2076,21 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                     }
                 else if (storedValue != NULL
                     && curParent != NULL
-                    && curParent->getOpCodeValue() == TR::compressedRefs)
+                    && curParent->getOpCodeValue() == TR::compressedRefs
+                    && node->getReferenceCount() > 1)
                     {
-                    // Reset visit count so the non-compressedRefs consumer gets
-                    // its own constrainAloadi call and can forward there.
+                    // The aloadi has other consumers beyond this compressedRefs anchor.
+                    // Reset visit count so those non-compressedRefs consumers each get
+                    // their own constrainAloadi call and forward there.
+                    // When rc==1 this anchor is the only consumer — fall through to the
+                    // forwarding path below and handle it directly.
                     node->setVisitCount(0);
                     if (vp->trace())
                         logprintf(vp->trace(), vp->comp()->log(),
-                            "VP ARRAY FORWARD:   defer aloadi n%dn: parent is compressedRefs "
+                            "VP ARRAY FORWARD:   defer aloadi n%dn: parent is compressedRefs, rc=%d "
                             "(will forward at direct consumer)\n",
-                            node->getGlobalIndex());
+                            node->getGlobalIndex(),
+                            node->getReferenceCount());
                     }
                 else if (storedValue != NULL
                     // storedValue is always a leaf (aload of a parm, or aload of the

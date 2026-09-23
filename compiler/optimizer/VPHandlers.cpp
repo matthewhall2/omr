@@ -4381,38 +4381,43 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                         CS2::HashIndex idx;
                         if (!vp->_arrayShadowForwardingMap.Locate(key, idx))
                             {
-                            // If the stored value is not a leaf node (e.g. it is an acall,
-                            // allocation, or arithmetic expression), sharing it directly
-                            // across block boundaries is unsafe: the node would be re-evaluated
-                            // in the wrong block, or its result would be live outside its
-                            // original block's scope.
+                            // Always privatize the value into  astore <new Auto> = valueChild
+                            // and record  aload <new Auto>  as the forwarded node.
                             //
-                            // Privatize by inserting  astore <new Auto> = valueChild  immediately
-                            // before the awrtbari's treetop, then record aload <new Auto> as the
-                            // forwarded value.  The aload is a leaf and is safe to share anywhere
-                            // in the same compilation.
-                            TR::Node *forwardedValue = valueChild;
-                            if (valueChild->getNumChildren() > 0)
-                                {
-                                TR::SymbolReference *tempSymRef =
-                                    vp->comp()->getSymRefTab()->createTemporary(
-                                        vp->comp()->getMethodSymbol(), TR::Address);
-                                TR::Node *astoreNode = TR::Node::createWithSymRef(
-                                    TR::astore, 1, 1, valueChild, tempSymRef);
-                                TR::TreeTop *astoreTT = TR::TreeTop::create(
-                                    vp->comp(), astoreNode, NULL, NULL);
-                                // Insert the astore immediately before the awrtbari's
-                                // wrapper treetop so the temp is defined before the store.
-                                ftt->insertBefore(astoreTT);
-                                forwardedValue = TR::Node::createWithSymRef(
-                                    TR::aload, 0, tempSymRef);
-                                forwardedValue->setReferenceCount(1);
-                                if (vp->trace())
-                                    logprintf(vp->trace(), vp->comp()->log(),
-                                        "VP ARRAY FORWARD:   privatized value n%dn into astore/aload temp #%d\n",
-                                        valueChild->getGlobalIndex(),
-                                        tempSymRef->getReferenceNumber());
-                                }
+                            // This is necessary even for leaf nodes (aload of parm/auto).
+                            // The scan runs during constrainANewArray, which happens when VP
+                            // visits the anewarray node — BEFORE constrainWrtBar visits the
+                            // awrtbari and calls constrainChildren on its children.
+                            // constrainChildren can replace a child node in-place
+                            // (ValuePropagationCommon.cpp: parent->setChild(whichChild, newNode))
+                            // so the original valueChild pointer stored in the map can become
+                            // stale: the awrtbari's child is updated but the map still holds
+                            // the old node.  When constrainAloadi later fetches the stale
+                            // pointer from the map and calls methods on it, the JIT crashes
+                            // with a GPF on a corrupt vtable (observed: RDI=0x0061307437546646,
+                            // TRAPNO=0xD inside libj9jit29.so).
+                            //
+                            // By always privatizing we store a freshly-created aload node
+                            // that is NOT a child of the awrtbari and thus is immune to
+                            // being replaced by constrainChildren.
+                            TR::SymbolReference *tempSymRef =
+                                vp->comp()->getSymRefTab()->createTemporary(
+                                    vp->comp()->getMethodSymbol(), TR::Address);
+                            TR::Node *astoreNode = TR::Node::createWithSymRef(
+                                TR::astore, 1, 1, valueChild, tempSymRef);
+                            TR::TreeTop *astoreTT = TR::TreeTop::create(
+                                vp->comp(), astoreNode, NULL, NULL);
+                            // Insert the astore immediately before the awrtbari's
+                            // wrapper treetop so the temp is defined before the store.
+                            ftt->insertBefore(astoreTT);
+                            TR::Node *forwardedValue = TR::Node::createWithSymRef(
+                                TR::aload, 0, tempSymRef);
+                            forwardedValue->setReferenceCount(1);
+                            if (vp->trace())
+                                logprintf(vp->trace(), vp->comp()->log(),
+                                    "VP ARRAY FORWARD:   privatized value n%dn into astore/aload temp #%d\n",
+                                    valueChild->getGlobalIndex(),
+                                    tempSymRef->getReferenceNumber());
 
                             vp->_arrayShadowForwardingMap.Add(key, forwardedValue);
                             vp->_arrayShadowStoreTTMap.Add(key, ftt);

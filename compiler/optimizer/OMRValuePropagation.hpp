@@ -980,10 +980,14 @@ public:
     TR_ValueNumberInfo *_valueNumberInfo; // Cached value number info
     CS2::HashTable<uint64_t, TR::list<TR::Node *> *, TR::Allocator> _constNodeInfo;
 
-    // Map from (anewarray_ptr << 32 | offset) to the value node stored into
-    // that array slot by a dominating awrtbari on a non-escaping
-    // allocationCanBeRemoved array.  Populated by constrainANewArray /
-    // constrainNewArray during GVP; consumed by constrainAloadi.
+    // Map from (anewarray_globalIndex << 32 | offset) to a privatized
+    // aload <temp> node whose matching astore <temp> = valueChild was inserted
+    // immediately before the awrtbari treetop during the constrainANewArray scan.
+    // The aload node is freshly created and is NOT a child of the awrtbari, so
+    // it is stable across the subsequent constrainWrtBar / constrainChildren walk
+    // (which can replace awrtbari children in-place via parent->setChild()).
+    // Populated by constrainANewArray / constrainNewArray during GVP;
+    // consumed by constrainAloadi.
     CS2::HashTable<uint64_t, TR::Node *, TR::Allocator> _arrayShadowForwardingMap;
 
     // Parallel map from the same key to the TR::TreeTop * of the awrtbari that

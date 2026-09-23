@@ -4179,10 +4179,16 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                     wrtbar->getGlobalIndex());
                             }
                         else if (fNode->getNumChildren() >= 1
-                                 && fNode->getFirstChild()->getOpCodeValue() == TR::awrtbari)
+                                 && fNode->getFirstChild()->getOpCodeValue() == TR::awrtbari
+                                 && fNode->getOpCodeValue() != TR::compressedRefs)
                             {
                             // Covers both ArrayStoreCHK and plain treetop wrappers
                             // (ArrayStoreCHK is replaced by a treetop after check removal).
+                            // Exclude compressedRefs: its awrtbari child is a commoned
+                            // reference to an awrtbari that has its own top-level treetop
+                            // and was (or will be) processed there.  Picking it up here
+                            // a second time would spuriously poison the store-TT map entry,
+                            // preventing removal of a legitimately single-write slot.
                             wrtbar = fNode->getFirstChild();
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),

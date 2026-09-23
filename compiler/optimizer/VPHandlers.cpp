@@ -2120,6 +2120,13 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                     // deferred removal (done in doDelayedTransformations, after the use-def
                     // assertion check in GVP::perform).  Null the entry now so that a second
                     // forwarded load from the same slot does not re-queue it.
+                    //
+                    // On compressed-refs JVMs a compressedRefs treetop immediately follows
+                    // the awrtbari's own treetop.  It wraps the same awrtbari node via
+                    // commoning and tells lowerCompressedRefs to compress the stored value.
+                    // Once the awrtbari is removed that anchor is dead and must also be
+                    // removed; otherwise compressedRefsEvaluator re-evaluates the deleted
+                    // awrtbari node.
                     CS2::HashIndex storeTTIdx;
                     if (vp->_arrayShadowStoreTTMap.Locate(key, storeTTIdx))
                         {
@@ -2132,6 +2139,27 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                                     storeTT->getNode()->getGlobalIndex());
                             vp->_forwardedStoreTreesToRemove.add(storeTT);
                             vp->_arrayShadowStoreTTMap[storeTTIdx] = NULL;
+
+                            // Check the immediately following treetop for the
+                            // compressedRefs anchor wrapping the same awrtbari node.
+                            if (vp->comp()->useCompressedPointers())
+                                {
+                                TR::TreeTop *nextTT = storeTT->getNextTreeTop();
+                                if (nextTT != NULL)
+                                    {
+                                    TR::Node *nextNode = nextTT->getNode();
+                                    if (nextNode->getOpCodeValue() == TR::compressedRefs
+                                        && nextNode->getNumChildren() >= 1
+                                        && nextNode->getFirstChild() == storeTT->getNode())
+                                        {
+                                        if (vp->trace())
+                                            logprintf(vp->trace(), vp->comp()->log(),
+                                                "VP ARRAY FORWARD:   queuing compressedRefs anchor n%dn for removal\n",
+                                                nextNode->getGlobalIndex());
+                                        vp->_forwardedStoreTreesToRemove.add(nextTT);
+                                        }
+                                    }
+                                }
                             }
                         }
 

@@ -4196,7 +4196,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             || fNode->getOpCodeValue() == TR::BBStart)
                             continue;
 
-                        // Unwrap ArrayStoreCHK or plain treetop if present.
+                        // Unwrap ArrayStoreCHK, plain treetop, or compressedRefs if present.
                         TR::Node *wrtbar = NULL;
                         if (fNode->getOpCodeValue() == TR::awrtbari)
                             {
@@ -4207,23 +4207,39 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                     wrtbar->getGlobalIndex());
                             }
                         else if (fNode->getNumChildren() >= 1
-                                 && fNode->getFirstChild()->getOpCodeValue() == TR::awrtbari
-                                 && fNode->getOpCodeValue() != TR::compressedRefs)
+                                 && fNode->getFirstChild()->getOpCodeValue() == TR::awrtbari)
                             {
-                            // Covers both ArrayStoreCHK and plain treetop wrappers
-                            // (ArrayStoreCHK is replaced by a treetop after check removal).
-                            // Exclude compressedRefs: its awrtbari child is a commoned
-                            // reference to an awrtbari that has its own top-level treetop
-                            // and was (or will be) processed there.  Picking it up here
-                            // a second time would spuriously poison the store-TT map entry,
-                            // preventing removal of a legitimately single-write slot.
-                            wrtbar = fNode->getFirstChild();
-                            if (vp->trace())
-                                logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:   found awrtbari n%dn under %s n%dn\n",
-                                    wrtbar->getGlobalIndex(),
-                                    fNode->getOpCode().getName(),
-                                    fNode->getGlobalIndex());
+                            TR::Node *child = fNode->getFirstChild();
+                            if (fNode->getOpCodeValue() == TR::compressedRefs
+                                && child->getReferenceCount() > 1)
+                                {
+                                // The awrtbari is commoned — it has its own top-level
+                                // treetop elsewhere and will be processed there.
+                                // Picking it up here a second time would spuriously
+                                // poison the store-TT map entry.
+                                if (vp->trace())
+                                    logprintf(vp->trace(), vp->comp()->log(),
+                                        "VP ARRAY FORWARD:   skip compressedRefs n%dn: awrtbari n%dn is commoned (rc=%d)\n",
+                                        fNode->getGlobalIndex(),
+                                        child->getGlobalIndex(),
+                                        child->getReferenceCount());
+                                }
+                            else
+                                {
+                                // Covers ArrayStoreCHK, plain treetop wrappers, and
+                                // compressedRefs that solely owns the awrtbari (rc==1).
+                                // In the compressedRefs case ftt itself is the treetop
+                                // to remove (the awrtbari has no separate top-level
+                                // treetop), so _arrayShadowStoreTTMap records ftt and
+                                // no sibling scan is needed at removal time.
+                                wrtbar = child;
+                                if (vp->trace())
+                                    logprintf(vp->trace(), vp->comp()->log(),
+                                        "VP ARRAY FORWARD:   found awrtbari n%dn under %s n%dn\n",
+                                        wrtbar->getGlobalIndex(),
+                                        fNode->getOpCode().getName(),
+                                        fNode->getGlobalIndex());
+                                }
                             }
 
                         if (wrtbar == NULL)

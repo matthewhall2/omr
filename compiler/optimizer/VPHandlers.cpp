@@ -2153,9 +2153,14 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                                 if (nextTT != NULL)
                                     {
                                     TR::Node *nextNode = nextTT->getNode();
+                                    TR::Node *storeNode = storeTT->getNode();
+                                    if (storeNode->getNumChildren() >= 1)
+                                        storeNode = storeNode->getFirstChild();
+
                                     if (nextNode->getOpCodeValue() == TR::compressedRefs
                                         && nextNode->getNumChildren() >= 1
-                                        && nextNode->getFirstChild() == storeTT->getNode())
+                                        && (nextNode->getFirstChild() == storeTT->getNode()
+                                            || nextNode->getFirstChild() == storeNode))
                                         {
                                         if (vp->trace())
                                             logprintf(vp->trace(), vp->comp()->log(),

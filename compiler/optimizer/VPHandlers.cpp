@@ -4500,14 +4500,17 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                         else
                             {
                             // A second store to the same slot: we can no longer prove which
-                            // value is live at the load, so poison the store-TT entry so
-                            // constrainAloadi will not delete either store.
+                            // value is live at the load.  Poison the store-TT entry so that
+                            // constrainAloadi will not delete either store, AND remove the
+                            // forwarding-value entry so that constrainAloadi will not forward
+                            // the load to the first store's (potentially wrong) value.
                             CS2::HashIndex storeTTIdx;
                             if (vp->_arrayShadowStoreTTMap.Locate(key, storeTTIdx))
                                 vp->_arrayShadowStoreTTMap[storeTTIdx] = NULL;
+                            vp->_arrayShadowForwardingMap.Remove(idx);
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:   slot [anewarray n%dn offset %lld] already mapped, skipping n%dn (store-TT poisoned)\n",
+                                    "VP ARRAY FORWARD:   slot [anewarray n%dn offset %lld] already mapped, skipping n%dn (store-TT poisoned, forwarding map entry removed)\n",
                                     node->getGlobalIndex(), (long long)offset,
                                     wrtbar->getGlobalIndex());
                             }

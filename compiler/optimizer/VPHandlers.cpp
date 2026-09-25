@@ -4177,8 +4177,8 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
         if (typeConstraint && typeConstraint->getClassType() && typeConstraint->getClassType()->getClass()) {
             TR_OpaqueClassBlock *arrayClass
                 = vp->fe()->getArrayClassFromComponentClass(typeConstraint->getClassType()->getClass());
-            static bool disableArrayStoreElimination = feGetEnv("disableArrayStoreElimination") != NULL;
-            if (arrayClass && !disableArrayStoreElimination)
+            static bool enableArrayStoreElimination = feGetEnv("enableArrayStoreElimination") != NULL;
+            if (arrayClass && enableArrayStoreElimination)
                 {
                 node->setAllocationCanBeRemoved(true);
 

@@ -4189,6 +4189,9 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                 // through use-def rather than comparing node pointers directly.
                 if (vp->_isGlobalPropagation)
                     {
+                    fprintf(stderr, "VP ARRAY FORWARD: anewarray n%dn found in method [%s]\n",
+                        node->getGlobalIndex(), vp->comp()->signature());
+                    fflush(stderr);
                     if (vp->trace())
                         logprintf(vp->trace(), vp->comp()->log(),
                             "VP ARRAY FORWARD: scanning stores for anewarray n%dn [" POINTER_PRINTF_FORMAT "]\n",

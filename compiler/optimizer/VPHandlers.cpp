@@ -4190,7 +4190,8 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                 // Both the store base and load base may be aload of a temp slot
                 // by the time later GVP passes run, so we resolve both sides
                 // through use-def rather than comparing node pointers directly.
-                if (vp->_isGlobalPropagation)
+                if (vp->_isGlobalPropagation
+                    && sizeConstraint->getLowInt() == sizeConstraint->getHighInt())
                     {
                     if (vp->trace())
                         logprintf(vp->trace(), vp->comp()->log(),

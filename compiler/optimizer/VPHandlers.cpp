@@ -2138,8 +2138,9 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                         TR::TreeTop *storeTT = vp->_arrayShadowStoreTTMap[storeTTIdx];
                         if (storeTT != NULL)
                             {
-                            fprintf(stderr, "VP ARRAY FORWARD: removing store n%dn in method [%s]\n",
-                                storeTT->getNode()->getGlobalIndex(), vp->comp()->signature());
+                            fprintf(stderr, "VP ARRAY FORWARD: removing store n%dn in method [%s] optLevel=%s\n",
+                                storeTT->getNode()->getGlobalIndex(), vp->comp()->signature(),
+                                vp->comp()->getHotnessName());
                             fflush(stderr);
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),

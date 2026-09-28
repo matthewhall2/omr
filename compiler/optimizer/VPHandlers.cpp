@@ -2138,6 +2138,9 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                         TR::TreeTop *storeTT = vp->_arrayShadowStoreTTMap[storeTTIdx];
                         if (storeTT != NULL)
                             {
+                            fprintf(stderr, "VP ARRAY FORWARD: removing store n%dn in method [%s]\n",
+                                storeTT->getNode()->getGlobalIndex(), vp->comp()->signature());
+                            fflush(stderr);
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
                                     "VP ARRAY FORWARD:   queuing forwarded store treetop n%dn for removal\n",
@@ -4189,9 +4192,6 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                 // through use-def rather than comparing node pointers directly.
                 if (vp->_isGlobalPropagation)
                     {
-                    fprintf(stderr, "VP ARRAY FORWARD: anewarray n%dn found in method [%s]\n",
-                        node->getGlobalIndex(), vp->comp()->signature());
-                    fflush(stderr);
                     if (vp->trace())
                         logprintf(vp->trace(), vp->comp()->log(),
                             "VP ARRAY FORWARD: scanning stores for anewarray n%dn [" POINTER_PRINTF_FORMAT "]\n",

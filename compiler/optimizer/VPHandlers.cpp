@@ -4211,6 +4211,63 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             || fNode->getOpCodeValue() == TR::BBStart)
                             continue;
 
+                        // If this is a return that hands back the anewarray (directly or via
+                        // a single-def aload of a temp that holds the anewarray), the array
+                        // escapes the method — do not forward any of its stores.
+                        if (fNode->getOpCode().isReturn()
+                            && fNode->getNumChildren() >= 1)
+                            {
+                            TR::Node *retChild = fNode->getFirstChild();
+                            TR::Node *retArray = NULL;
+                            if (retChild->getOpCodeValue() == TR::anewarray
+                                || retChild->getOpCodeValue() == TR::newarray)
+                                {
+                                retArray = retChild;
+                                }
+                            else if (useDefInfo
+                                     && retChild->getOpCode().isLoadVar()
+                                     && retChild->getOpCode().hasSymbolReference())
+                                {
+                                uint16_t useIdx = retChild->getUseDefIndex();
+                                if (useDefInfo->isUseIndex(useIdx))
+                                    {
+                                    TR_UseDefInfo::BitVector defs(vp->comp()->allocator());
+                                    if (useDefInfo->getUseDef(defs, useIdx)
+                                        && defs.PopulationCount() == 1)
+                                        {
+                                        TR_UseDefInfo::BitVector::Cursor c(defs);
+                                        c.SetToFirstOne();
+                                        int32_t defIdx = c;
+                                        if (defIdx >= useDefInfo->getFirstRealDefIndex())
+                                            {
+                                            TR::Node *defNode = useDefInfo->getNode(defIdx);
+                                            if (defNode->getOpCode().isStore()
+                                                && defNode->getNumChildren() >= 1)
+                                                {
+                                                TR::Node *val = defNode->getFirstChild();
+                                                if ((val->getOpCodeValue() == TR::anewarray
+                                                     || val->getOpCodeValue() == TR::newarray)
+                                                    && val == node)
+                                                    retArray = val;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            if (retArray == node)
+                                {
+                                fprintf(stderr, "VP ARRAY FORWARD: anewarray n%dn escapes via return in method [%s] optLevel=%s — skipping\n",
+                                    node->getGlobalIndex(), vp->comp()->signature(),
+                                    vp->comp()->getHotnessName());
+                                fflush(stderr);
+                                if (vp->trace())
+                                    logprintf(vp->trace(), vp->comp()->log(),
+                                        "VP ARRAY FORWARD:   anewarray n%dn escapes via areturn n%dn — aborting scan\n",
+                                        node->getGlobalIndex(), fNode->getGlobalIndex());
+                                break;
+                                }
+                            }
+
                         // Unwrap ArrayStoreCHK, plain treetop, or compressedRefs if present.
                         TR::Node *wrtbar = NULL;
                         if (fNode->getOpCodeValue() == TR::awrtbari)

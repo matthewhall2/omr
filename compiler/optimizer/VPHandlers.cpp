@@ -4321,17 +4321,19 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                 }
                             }
 
-                        // Escape via being stored as a value into any store node
-                        // (astore, astorei, awrtbari, awrtbar, etc.).
-                        if (!escaped && fNode->getOpCode().isStore())
+                        // Escape via being stored as a value into a heap location
+                        // (astorei, awrtbari, awrtbar, etc.).  Direct stores to Autos
+                        // (astore) are just temp copies — the array has not escaped.
+                        if (!escaped
+                            && fNode->getOpCode().isStore()
+                            && fNode->getOpCode().isIndirect())
                             {
-                            int32_t valueChildIndex = fNode->getOpCode().isIndirect() ? 1 : 0;
-                            if (fNode->getNumChildren() > valueChildIndex
-                                && vp->getValueNumber(fNode->getChild(valueChildIndex)) == arrayVN)
+                            if (fNode->getNumChildren() >= 2
+                                && vp->getValueNumber(fNode->getChild(1)) == arrayVN)
                                 {
                                 if (vp->trace())
                                     logprintf(vp->trace(), vp->comp()->log(),
-                                        "VP ARRAY FORWARD:   anewarray n%dn escapes via store n%dn value child — aborting scan\n",
+                                        "VP ARRAY FORWARD:   anewarray n%dn escapes via indirect store n%dn value child — aborting scan\n",
                                         node->getGlobalIndex(), fNode->getGlobalIndex());
                                 escaped = true;
                                 }

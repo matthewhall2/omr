@@ -4139,6 +4139,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             || fNode->getOpCodeValue() == TR::BBStart)
                             continue;
 
+                        bool escaped = false;
                         // If this is a return that hands back the anewarray, the array
                         // escapes the method — do not forward any of its stores.
                         if (fNode->getOpCode().isReturn()
@@ -4149,7 +4150,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                 logprintf(vp->trace(), vp->comp()->log(),
                                     "VP ARRAY FORWARD:   anewarray n%dn escapes via areturn n%dn — aborting scan\n",
                                     node->getGlobalIndex(), fNode->getGlobalIndex());
-                            break;
+                            escaped = true;
                             }
 
                         // If the anewarray escapes — passed as a call argument, or stored
@@ -4160,8 +4161,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                         // On escape: purge any entries already recorded in the forwarding
                         // and store-TT maps for this anewarray (keyed by upper 32 bits =
                         // node->getGlobalIndex()), then break out of the scan.
-                        {
-                        bool escaped = false;
+                        
                         int32_t arrayVN = vp->getValueNumber(node);
 
                         // Escape via call argument.
@@ -4205,7 +4205,6 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             removeArrayForwardingEntries(vp, node);
                             break;
                             }
-                        }
 
                         // Unwrap ArrayStoreCHK, plain treetop, or compressedRefs if present.
                         TR::Node *wrtbar = NULL;
@@ -4224,10 +4223,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             if (fNode->getOpCodeValue() == TR::compressedRefs
                                 && child->getReferenceCount() > 1)
                                 {
-                                // The awrtbari is commoned — it has its own top-level
-                                // treetop elsewhere and will be processed there.
-                                // Picking it up here a second time would spuriously
-                                // poison the store-TT map entry.
+                                // awrtbari is commoned. handle elsewhere
                                 if (vp->trace())
                                     logprintf(vp->trace(), vp->comp()->log(),
                                         "VP ARRAY FORWARD:   skip compressedRefs n%dn: awrtbari n%dn is commoned (rc=%d)\n",
@@ -4237,12 +4233,6 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                 }
                             else
                                 {
-                                // Covers ArrayStoreCHK, plain treetop wrappers, and
-                                // compressedRefs that solely owns the awrtbari (rc==1).
-                                // In the compressedRefs case ftt itself is the treetop
-                                // to remove (the awrtbari has no separate top-level
-                                // treetop), so _arrayShadowStoreTTMap records ftt and
-                                // no sibling scan is needed at removal time.
                                 wrtbar = child;
                                 if (vp->trace())
                                     logprintf(vp->trace(), vp->comp()->log(),

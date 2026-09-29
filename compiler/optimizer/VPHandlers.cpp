@@ -4268,6 +4268,53 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                 }
                             }
 
+                        // If the anewarray escapes — passed as a call argument, or stored
+                        // as a value into any field/array/local — do not forward its stores.
+                        // Use value numbers: the VN propagates through any astore/aload
+                        // temps, so a single O(1) comparison per child is sufficient.
+                        {
+                        int32_t arrayVN = vp->getValueNumber(node);
+
+                        // Escape via call argument.
+                        if (fNode->getOpCode().isCall())
+                            {
+                            bool escaped = false;
+                            int32_t firstArgIndex = fNode->getFirstArgumentIndex();
+                            for (int32_t i = firstArgIndex; i < fNode->getNumChildren(); ++i)
+                                {
+                                if (vp->getValueNumber(fNode->getChild(i)) == arrayVN)
+                                    {
+                                    if (vp->trace())
+                                        logprintf(vp->trace(), vp->comp()->log(),
+                                            "VP ARRAY FORWARD:   anewarray n%dn escapes via call arg %d of n%dn — aborting scan\n",
+                                            node->getGlobalIndex(), i, fNode->getGlobalIndex());
+                                    node->setAllocationCanBeRemoved(false);
+                                    escaped = true;
+                                    break;
+                                    }
+                                }
+                            if (escaped)
+                                break;
+                            }
+
+                        // Escape via being stored as a value into any store node
+                        // (astore, astorei, awrtbari, awrtbar, etc.).
+                        if (fNode->getOpCode().isStore())
+                            {
+                            int32_t valueChildIndex = fNode->getOpCode().isIndirect() ? 1 : 0;
+                            if (fNode->getNumChildren() > valueChildIndex
+                                && vp->getValueNumber(fNode->getChild(valueChildIndex)) == arrayVN)
+                                {
+                                if (vp->trace())
+                                    logprintf(vp->trace(), vp->comp()->log(),
+                                        "VP ARRAY FORWARD:   anewarray n%dn escapes via store n%dn value child — aborting scan\n",
+                                        node->getGlobalIndex(), fNode->getGlobalIndex());
+                                node->setAllocationCanBeRemoved(false);
+                                break;
+                                }
+                            }
+                        }
+
                         // Unwrap ArrayStoreCHK, plain treetop, or compressedRefs if present.
                         TR::Node *wrtbar = NULL;
                         if (fNode->getOpCodeValue() == TR::awrtbari)
@@ -4321,6 +4368,20 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                         //   child(0) = aladd/aiadd (store address)
                         //   child(1) = value being stored
                         //   child(2) = destination object for write barrier
+
+                        // If the anewarray is the value being stored into another
+                        // object or array, it escapes — abort the scan.
+                        if (wrtbar->getNumChildren() >= 2
+                            && vp->getValueNumber(wrtbar->getChild(1)) == vp->getValueNumber(node))
+                            {
+                            if (vp->trace())
+                                logprintf(vp->trace(), vp->comp()->log(),
+                                    "VP ARRAY FORWARD:   anewarray n%dn escapes via awrtbari n%dn value child — aborting scan\n",
+                                    node->getGlobalIndex(), wrtbar->getGlobalIndex());
+                            node->setAllocationCanBeRemoved(false);
+                            break;
+                            }
+
                         if (wrtbar->getNumChildren() < 3
                             || !wrtbar->getChild(0)->getOpCode().isArrayRef())
                             {

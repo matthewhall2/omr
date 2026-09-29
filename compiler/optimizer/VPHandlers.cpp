@@ -4272,13 +4272,17 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                         // as a value into any field/array/local — do not forward its stores.
                         // Use value numbers: the VN propagates through any astore/aload
                         // temps, so a single O(1) comparison per child is sufficient.
+                        //
+                        // On escape: purge any entries already recorded in the forwarding
+                        // and store-TT maps for this anewarray (keyed by upper 32 bits =
+                        // node->getGlobalIndex()), then break out of the scan.
                         {
+                        bool escaped = false;
                         int32_t arrayVN = vp->getValueNumber(node);
 
                         // Escape via call argument.
                         if (fNode->getOpCode().isCall())
                             {
-                            bool escaped = false;
                             int32_t firstArgIndex = fNode->getFirstArgumentIndex();
                             for (int32_t i = firstArgIndex; i < fNode->getNumChildren(); ++i)
                                 {
@@ -4288,18 +4292,15 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                         logprintf(vp->trace(), vp->comp()->log(),
                                             "VP ARRAY FORWARD:   anewarray n%dn escapes via call arg %d of n%dn — aborting scan\n",
                                             node->getGlobalIndex(), i, fNode->getGlobalIndex());
-                                    node->setAllocationCanBeRemoved(false);
                                     escaped = true;
                                     break;
                                     }
                                 }
-                            if (escaped)
-                                break;
                             }
 
                         // Escape via being stored as a value into any store node
                         // (astore, astorei, awrtbari, awrtbar, etc.).
-                        if (fNode->getOpCode().isStore())
+                        if (!escaped && fNode->getOpCode().isStore())
                             {
                             int32_t valueChildIndex = fNode->getOpCode().isIndirect() ? 1 : 0;
                             if (fNode->getNumChildren() > valueChildIndex
@@ -4309,9 +4310,36 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                     logprintf(vp->trace(), vp->comp()->log(),
                                         "VP ARRAY FORWARD:   anewarray n%dn escapes via store n%dn value child — aborting scan\n",
                                         node->getGlobalIndex(), fNode->getGlobalIndex());
-                                node->setAllocationCanBeRemoved(false);
-                                break;
+                                escaped = true;
                                 }
+                            }
+
+                        if (escaped)
+                            {
+                            // Purge any forwarding/store-TT entries recorded so far for
+                            // this anewarray.  Keys are (globalIndex << 32 | offset);
+                            // collect matching keys first, then remove to avoid mutating
+                            // the table while iterating.
+                            uint32_t gIdx = (uint32_t)node->getGlobalIndex();
+                            TR::list<uint64_t, TR::Region &> toRemove(vp->comp()->trMemory()->currentStackRegion());
+                            {
+                            auto fwdCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(vp->_arrayShadowForwardingMap);
+                            for (fwdCursor.SetToFirst(); fwdCursor.Valid(); fwdCursor.SetToNext())
+                                {
+                                uint64_t k = vp->_arrayShadowForwardingMap.KeyAt(fwdCursor);
+                                if ((k >> 32) == gIdx)
+                                    toRemove.push_back(k);
+                                }
+                            }
+                            for (auto k : toRemove)
+                                {
+                                CS2::HashIndex idx;
+                                if (vp->_arrayShadowForwardingMap.Locate(k, idx))
+                                    vp->_arrayShadowForwardingMap.Remove(idx);
+                                if (vp->_arrayShadowStoreTTMap.Locate(k, idx))
+                                    vp->_arrayShadowStoreTTMap.Remove(idx);
+                                }
+                            break;
                             }
                         }
 
@@ -4609,19 +4637,34 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                         else
                             {
                             // A second store to the same slot: we can no longer prove which
-                            // value is live at the load.  Poison the store-TT entry so that
-                            // constrainAloadi will not delete either store, AND remove the
-                            // forwarding-value entry so that constrainAloadi will not forward
-                            // the load to the first store's (potentially wrong) value.
-                            CS2::HashIndex storeTTIdx;
-                            if (vp->_arrayShadowStoreTTMap.Locate(key, storeTTIdx))
-                                vp->_arrayShadowStoreTTMap[storeTTIdx] = NULL;
-                            vp->_arrayShadowForwardingMap.Remove(idx);
+                            // value is live at any load.  Purge all entries recorded for
+                            // this anewarray and abort the scan — there is nothing useful
+                            // left to collect.
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:   slot [anewarray n%dn offset %lld] already mapped, skipping n%dn (store-TT poisoned, forwarding map entry removed)\n",
+                                    "VP ARRAY FORWARD:   slot [anewarray n%dn offset %lld] written twice (n%dn) — purging all entries and aborting scan\n",
                                     node->getGlobalIndex(), (long long)offset,
                                     wrtbar->getGlobalIndex());
+                            uint32_t gIdx = (uint32_t)node->getGlobalIndex();
+                            TR::list<uint64_t, TR::Region &> toRemove(vp->comp()->trMemory()->currentStackRegion());
+                            {
+                            auto fwdCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(vp->_arrayShadowForwardingMap);
+                            for (fwdCursor.SetToFirst(); fwdCursor.Valid(); fwdCursor.SetToNext())
+                                {
+                                uint64_t k = vp->_arrayShadowForwardingMap.KeyAt(fwdCursor);
+                                if ((k >> 32) == gIdx)
+                                    toRemove.push_back(k);
+                                }
+                            }
+                            for (auto k : toRemove)
+                                {
+                                CS2::HashIndex ridx;
+                                if (vp->_arrayShadowForwardingMap.Locate(k, ridx))
+                                    vp->_arrayShadowForwardingMap.Remove(ridx);
+                                if (vp->_arrayShadowStoreTTMap.Locate(k, ridx))
+                                    vp->_arrayShadowStoreTTMap.Remove(ridx);
+                                }
+                            break;
                             }
                         }
                     }

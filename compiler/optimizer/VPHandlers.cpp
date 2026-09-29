@@ -4234,61 +4234,17 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             || fNode->getOpCodeValue() == TR::BBStart)
                             continue;
 
-                        // If this is a return that hands back the anewarray (directly or via
-                        // a single-def aload of a temp that holds the anewarray), the array
+                        // If this is a return that hands back the anewarray, the array
                         // escapes the method — do not forward any of its stores.
                         if (fNode->getOpCode().isReturn()
-                            && fNode->getNumChildren() >= 1)
+                            && fNode->getNumChildren() >= 1
+                            && vp->getValueNumber(fNode->getFirstChild()) == vp->getValueNumber(node))
                             {
-                            TR::Node *retChild = fNode->getFirstChild();
-                            TR::Node *retArray = NULL;
-                            if (retChild->getOpCodeValue() == TR::anewarray
-                                || retChild->getOpCodeValue() == TR::newarray)
-                                {
-                                retArray = retChild;
-                                }
-                            else if (useDefInfo
-                                     && retChild->getOpCode().isLoadVar()
-                                     && retChild->getOpCode().hasSymbolReference())
-                                {
-                                uint16_t useIdx = retChild->getUseDefIndex();
-                                if (useDefInfo->isUseIndex(useIdx))
-                                    {
-                                    TR_UseDefInfo::BitVector defs(vp->comp()->allocator());
-                                    if (useDefInfo->getUseDef(defs, useIdx)
-                                        && defs.PopulationCount() == 1)
-                                        {
-                                        TR_UseDefInfo::BitVector::Cursor c(defs);
-                                        c.SetToFirstOne();
-                                        int32_t defIdx = c;
-                                        if (defIdx >= useDefInfo->getFirstRealDefIndex())
-                                            {
-                                            TR::Node *defNode = useDefInfo->getNode(defIdx);
-                                            if (defNode->getOpCode().isStore()
-                                                && defNode->getNumChildren() >= 1)
-                                                {
-                                                TR::Node *val = defNode->getFirstChild();
-                                                if ((val->getOpCodeValue() == TR::anewarray
-                                                     || val->getOpCodeValue() == TR::newarray)
-                                                    && val == node)
-                                                    retArray = val;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            if (retArray == node)
-                                {
-                                fprintf(stderr, "VP ARRAY FORWARD: anewarray n%dn escapes via return in method [%s] optLevel=%s — skipping\n",
-                                    node->getGlobalIndex(), vp->comp()->signature(),
-                                    vp->comp()->getHotnessName());
-                                fflush(stderr);
-                                if (vp->trace())
-                                    logprintf(vp->trace(), vp->comp()->log(),
-                                        "VP ARRAY FORWARD:   anewarray n%dn escapes via areturn n%dn — aborting scan\n",
-                                        node->getGlobalIndex(), fNode->getGlobalIndex());
-                                break;
-                                }
+                            if (vp->trace())
+                                logprintf(vp->trace(), vp->comp()->log(),
+                                    "VP ARRAY FORWARD:   anewarray n%dn escapes via areturn n%dn — aborting scan\n",
+                                    node->getGlobalIndex(), fNode->getGlobalIndex());
+                            break;
                             }
 
                         // If the anewarray escapes — passed as a call argument, or stored
@@ -4422,106 +4378,13 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             continue;
                             }
 
-                        // Resolve storeBase to the anewarray via use-def,
-                        // same logic as in constrainAloadi.
-                        TR::Node *resolvedNewArray = NULL;
-                        if (storeBase->getOpCodeValue() == TR::anewarray
-                            || storeBase->getOpCodeValue() == TR::newarray)
-                            {
-                            resolvedNewArray = storeBase;
-                            if (vp->trace())
-                                logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:   store base n%dn is anewarray directly\n",
-                                    storeBase->getGlobalIndex());
-                            }
-                        else if (useDefInfo
-                                 && storeBase->getOpCode().isLoadVar()
-                                 && storeBase->getOpCode().hasSymbolReference())
-                            {
-                            uint16_t useIdx = storeBase->getUseDefIndex();
-                            if (!useDefInfo->isUseIndex(useIdx))
-                                {
-                                if (vp->trace())
-                                    logprintf(vp->trace(), vp->comp()->log(),
-                                        "VP ARRAY FORWARD:   skip n%dn: store base n%dn has no use index\n",
-                                        wrtbar->getGlobalIndex(), storeBase->getGlobalIndex());
-                                continue;
-                                }
-                            TR_UseDefInfo::BitVector defs(vp->comp()->allocator());
-                            if (!useDefInfo->getUseDef(defs, useIdx))
-                                {
-                                if (vp->trace())
-                                    logprintf(vp->trace(), vp->comp()->log(),
-                                        "VP ARRAY FORWARD:   skip n%dn: store base n%dn getUseDef failed\n",
-                                        wrtbar->getGlobalIndex(), storeBase->getGlobalIndex());
-                                continue;
-                                }
-                            if (defs.PopulationCount() != 1)
-                                {
-                                if (vp->trace())
-                                    logprintf(vp->trace(), vp->comp()->log(),
-                                        "VP ARRAY FORWARD:   skip n%dn: store base n%dn has %d defs (need 1)\n",
-                                        wrtbar->getGlobalIndex(), storeBase->getGlobalIndex(),
-                                        (int)defs.PopulationCount());
-                                continue;
-                                }
-                            TR_UseDefInfo::BitVector::Cursor c(defs);
-                            c.SetToFirstOne();
-                            int32_t defIdx = c;
-                            if (defIdx < useDefInfo->getFirstRealDefIndex())
-                                {
-                                if (vp->trace())
-                                    logprintf(vp->trace(), vp->comp()->log(),
-                                        "VP ARRAY FORWARD:   skip n%dn: store base n%dn def is entry def\n",
-                                        wrtbar->getGlobalIndex(), storeBase->getGlobalIndex());
-                                continue;
-                                }
-                            TR::Node *defNode = useDefInfo->getNode(defIdx);
-                            if (!defNode->getOpCode().isStore() || defNode->getNumChildren() < 1)
-                                {
-                                if (vp->trace())
-                                    logprintf(vp->trace(), vp->comp()->log(),
-                                        "VP ARRAY FORWARD:   skip n%dn: store base def n%dn not a store\n",
-                                        wrtbar->getGlobalIndex(), defNode->getGlobalIndex());
-                                continue;
-                                }
-                            TR::Node *val = defNode->getFirstChild();
-                            if ((val->getOpCodeValue() == TR::anewarray
-                                 || val->getOpCodeValue() == TR::newarray)
-                                && val->markedAllocationCanBeRemoved())
-                                {
-                                resolvedNewArray = val;
-                                if (vp->trace())
-                                    logprintf(vp->trace(), vp->comp()->log(),
-                                        "VP ARRAY FORWARD:   store base n%dn resolved to anewarray n%dn via use-def\n",
-                                        storeBase->getGlobalIndex(), val->getGlobalIndex());
-                                }
-                            else
-                                {
-                                if (vp->trace())
-                                    logprintf(vp->trace(), vp->comp()->log(),
-                                        "VP ARRAY FORWARD:   skip n%dn: store base def value n%dn is not a removable anewarray\n",
-                                        wrtbar->getGlobalIndex(), val->getGlobalIndex());
-                                continue;
-                                }
-                            }
-                        else
+                        // Check that the store base is this anewarray via value number.
+                        if (vp->getValueNumber(storeBase) != vp->getValueNumber(node))
                             {
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:   skip n%dn: store base n%dn not anewarray or loadvar\n",
-                                    wrtbar->getGlobalIndex(), storeBase->getGlobalIndex());
-                            continue;
-                            }
-
-                        // Only record stores into this specific anewarray.
-                        if (resolvedNewArray != node)
-                            {
-                            if (vp->trace())
-                                logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:   skip n%dn: resolved anewarray n%dn != this anewarray n%dn\n",
-                                    wrtbar->getGlobalIndex(),
-                                    resolvedNewArray->getGlobalIndex(), node->getGlobalIndex());
+                                    "VP ARRAY FORWARD:   skip n%dn: store base n%dn is not this anewarray n%dn\n",
+                                    wrtbar->getGlobalIndex(), storeBase->getGlobalIndex(), node->getGlobalIndex());
                             continue;
                             }
 

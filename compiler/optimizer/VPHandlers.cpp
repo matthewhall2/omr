@@ -1917,113 +1917,18 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                 ? offsetNode->getLongInt()
                 : (int64_t)offsetNode->getInt();
 
-            // Resolve the base node to the anewarray via a single use-def step.
-            // The base is typically an aload of a privatized-inliner-arg temp
-            // whose unique def is "astore <temp> = anewarray".
-            TR::Node *anewArrayNode = NULL;
-            TR_UseDefInfo *useDefInfo = vp->_useDefInfo;
-            if (baseNode->getOpCodeValue() == TR::anewarray
-                || baseNode->getOpCodeValue() == TR::newarray)
-                {
-                anewArrayNode = baseNode;
-                if (vp->trace())
-                    logprintf(vp->trace(), vp->comp()->log(),
-                        "VP ARRAY FORWARD:   load base n%dn is anewarray directly\n",
-                        baseNode->getGlobalIndex());
-                }
-            else if (useDefInfo
-                     && baseNode->getOpCode().isLoadVar()
-                     && baseNode->getOpCode().hasSymbolReference())
-                {
-                uint16_t useIdx = baseNode->getUseDefIndex();
-                if (!useDefInfo->isUseIndex(useIdx))
-                    {
-                    if (vp->trace())
-                        logprintf(vp->trace(), vp->comp()->log(),
-                            "VP ARRAY FORWARD:   skip aloadi n%dn: base n%dn has no use index\n",
-                            node->getGlobalIndex(), baseNode->getGlobalIndex());
-                    }
-                else
-                    {
-                    TR_UseDefInfo::BitVector defs(vp->comp()->allocator());
-                    if (!useDefInfo->getUseDef(defs, useIdx))
-                        {
-                        if (vp->trace())
-                            logprintf(vp->trace(), vp->comp()->log(),
-                                "VP ARRAY FORWARD:   skip aloadi n%dn: base n%dn getUseDef failed\n",
-                                node->getGlobalIndex(), baseNode->getGlobalIndex());
-                        }
-                    else if (defs.PopulationCount() != 1)
-                        {
-                        if (vp->trace())
-                            logprintf(vp->trace(), vp->comp()->log(),
-                                "VP ARRAY FORWARD:   skip aloadi n%dn: base n%dn has %d defs (need 1)\n",
-                                node->getGlobalIndex(), baseNode->getGlobalIndex(),
-                                (int)defs.PopulationCount());
-                        }
-                    else
-                        {
-                        TR_UseDefInfo::BitVector::Cursor c(defs);
-                        c.SetToFirstOne();
-                        int32_t defIdx = c;
-                        if (defIdx < useDefInfo->getFirstRealDefIndex())
-                            {
-                            if (vp->trace())
-                                logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:   skip aloadi n%dn: base n%dn def is entry def\n",
-                                    node->getGlobalIndex(), baseNode->getGlobalIndex());
-                            }
-                        else
-                            {
-                            TR::Node *defNode = useDefInfo->getNode(defIdx);
-                            if (!defNode->getOpCode().isStore() || defNode->getNumChildren() < 1)
-                                {
-                                if (vp->trace())
-                                    logprintf(vp->trace(), vp->comp()->log(),
-                                        "VP ARRAY FORWARD:   skip aloadi n%dn: base def n%dn not a store\n",
-                                        node->getGlobalIndex(), defNode->getGlobalIndex());
-                                }
-                            else
-                                {
-                                TR::Node *val = defNode->getFirstChild();
-                                if ((val->getOpCodeValue() == TR::anewarray
-                                     || val->getOpCodeValue() == TR::newarray)
-                                    && val->markedAllocationCanBeRemoved())
-                                    {
-                                    anewArrayNode = val;
-                                    if (vp->trace())
-                                        logprintf(vp->trace(), vp->comp()->log(),
-                                            "VP ARRAY FORWARD:   load base n%dn resolved to anewarray n%dn via use-def\n",
-                                            baseNode->getGlobalIndex(), val->getGlobalIndex());
-                                    }
-                                else
-                                    {
-                                    if (vp->trace())
-                                        logprintf(vp->trace(), vp->comp()->log(),
-                                            "VP ARRAY FORWARD:   skip aloadi n%dn: base def value n%dn not a removable anewarray\n",
-                                            node->getGlobalIndex(), val->getGlobalIndex());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            else
-                {
-                if (vp->trace())
-                    logprintf(vp->trace(), vp->comp()->log(),
-                        "VP ARRAY FORWARD:   skip aloadi n%dn: base n%dn not anewarray or loadvar\n",
-                        node->getGlobalIndex(), baseNode->getGlobalIndex());
-                }
+            // Reconstruct the map key using the base node's value number.  VN
+            // propagates through astore/aload temps so this matches the key
+            // recorded in constrainANewArray regardless of how many temps
+            // intervene between the anewarray and this load.
+            uint64_t key = ((uint64_t)(uint32_t)vp->getValueNumber(baseNode) << 32)
+                           | (uint64_t)(uint32_t)offset;
+            if (vp->trace())
+                logprintf(vp->trace(), vp->comp()->log(),
+                    "VP ARRAY FORWARD:   load base n%dn VN=%d, key=0x%llx\n",
+                    baseNode->getGlobalIndex(), vp->getValueNumber(baseNode), (unsigned long long)key);
 
-            if (anewArrayNode != NULL)
-                {
-                // Key: upper 32 bits = node's global index (unique within the compilation),
-                //      lower 32 bits = offset.
-                // Using the raw pointer truncated to 32 bits is wrong on 64-bit systems:
-                // two nodes whose addresses differ only in the upper 32 bits would collide.
-                uint64_t key = ((uint64_t)(uint32_t)anewArrayNode->getGlobalIndex() << 32)
-                               | (uint64_t)(uint32_t)offset;
+            {
                 CS2::HashIndex idx;
                 TR::Node *storedValue = NULL;
                 if (vp->_arrayShadowForwardingMap.Locate(key, idx))
@@ -2034,13 +1939,13 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                     OMR::Logger *log = vp->comp()->log();
                     if (storedValue)
                         logprintf(vp->trace(), log,
-                            "VP ARRAY FORWARD:   map hit [anewarray n%dn offset %lld] -> value n%dn\n",
-                            anewArrayNode->getGlobalIndex(), (long long)offset,
+                            "VP ARRAY FORWARD:   map hit [base VN=%d offset %lld] -> value n%dn\n",
+                            vp->getValueNumber(baseNode), (long long)offset,
                             storedValue->getGlobalIndex());
                     else
                         logprintf(vp->trace(), log,
-                            "VP ARRAY FORWARD:   no map entry [anewarray n%dn offset %lld] for aloadi n%dn\n",
-                            anewArrayNode->getGlobalIndex(), (long long)offset,
+                            "VP ARRAY FORWARD:   no map entry [base VN=%d offset %lld] for aloadi n%dn\n",
+                            vp->getValueNumber(baseNode), (long long)offset,
                             node->getGlobalIndex());
                     }
 
@@ -4146,7 +4051,7 @@ TR::Node *constrainVariableNewArray(OMR::ValuePropagation *vp, TR::Node *node)
 
 static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *node)
     {
-    uint32_t gIdx = (uint32_t)node->getGlobalIndex();
+    uint32_t gIdx = (uint32_t)vp->getValueNumber(node);
     TR::list<uint64_t, TR::Region &> toRemove(vp->comp()->trMemory()->currentStackRegion());
     {
     auto fwdCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(vp->_arrayShadowForwardingMap);
@@ -4444,11 +4349,10 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             ? offsetNode->getLongInt()
                             : (int64_t)offsetNode->getInt();
 
-                        // Key: upper 32 bits = node's global index (unique within the
-                        //      compilation), lower 32 bits = offset.
-                        // Using a raw pointer truncated to 32 bits is wrong on 64-bit
-                        // systems where two nodes can share the same low 32 address bits.
-                        uint64_t key = ((uint64_t)(uint32_t)node->getGlobalIndex() << 32)
+                        // Key: upper 32 bits = value number of the anewarray (unique per
+                        //      allocation, propagates through astore/aload temps),
+                        //      lower 32 bits = offset.
+                        uint64_t key = ((uint64_t)(uint32_t)vp->getValueNumber(node) << 32)
                                        | (uint64_t)(uint32_t)offset;
 
                         CS2::HashIndex idx;

@@ -2082,72 +2082,31 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                             }
                         }
 
-                    // When rc > 1 the aloadi is referenced by multiple parents.
-                    // Replacing only the current parent's child pointer with
-                    // storedValue while other parents (including a compressedRefs
-                    // anchor) still hold the original aloadi creates inconsistent
-                    // IL: one consumer sees a full decompressed reference (via
-                    // aload <T>), while the compressedRefs anchor still evaluates
-                    // the original aloadi through lowerCompressedRefs, producing
-                    // an independent second copy.  On compressed-refs JVMs this
-                    // split causes the wrong value to be passed to call arguments,
-                    // resulting in IllegalArgumentException at runtime.
+                    // When rc > 1 the aloadi is referenced by multiple parents (e.g. a
+                    // compressedRefs anchor and a call/field consumer). Replacing only the
+                    // current parent's child pointer with storedValue while other parents
+                    // still hold the original aloadi creates inconsistent IL.
                     //
-                    // Instead, defer an in-place morph of the aloadi node itself
-                    // to doDelayedTransformations.  All parents then see the same
-                    // node, now bearing the aload opcode/symref.  The compressedRefs
-                    // anchor is left with an aload child; lowerCompressedRefs detects
-                    // that the child is no longer an aloadi/astorei and skips it.
+                    // Instead, defer an in-place morph of the aloadi node itself to
+                    // doDelayedTransformations. All parents then see the same node bearing
+                    // the aload opcode/symref.
                     if (node->getReferenceCount() > 1)
                         {
-                        // Defer the in-place morph to doDelayedTransformations.
-                        // Morphing here (during the GVP walk) would call removeChildren,
-                        // which can invoke setUseDefInfo(NULL) while _inGVPWalk is true,
-                        // tripping the assertion in SmallOptimizer::setUseDefInfo.
-                        //
-                        // If the forwarded constraint was not yet available (storedValue's
-                        // privatised astore<temp> not yet visited, mergeDefConstraints
-                        // returned null and addBlockConstraint was skipped above), queue
-                        // the morph now and reset the visit count so VP re-visits this
-                        // aloadi as a child of later consumers (e.g. instanceof, checkcast).
-                        // On that second visit the astore<temp> will have been processed
-                        // and the constraint will be available, allowing those consumers
-                        // to fold — but the morph is not re-queued on the second visit
-                        // (fwdConstraint will be non-null then).
-                        if (!fwdConstraint)
-                            {
-                            vp->_pendingAlloadiMorphs.add(
-                                new (vp->trHeapMemory()) TR_Pair<TR::Node, TR::Node>(node, storedValue));
-                            if (vp->trace())
-                                logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:   queued shared aloadi n%dn for deferred morph to %s\n",
-                                    node->getGlobalIndex(),
-                                    storedValue->getOpCode().getName());
-                            node->setVisitCount(0);
-                            }
+                        vp->_pendingAlloadiMorphs.add(
+                            new (vp->trHeapMemory()) TR_Pair<TR::Node, TR::Node>(node, storedValue));
+                        if (vp->trace())
+                            logprintf(vp->trace(), vp->comp()->log(),
+                                "VP ARRAY FORWARD:   queued shared aloadi n%dn for deferred morph to %s\n",
+                                node->getGlobalIndex(),
+                                storedValue->getOpCode().getName());
                         return node;
                         }
 
+                    // Single consumer (rc == 1): replace node directly with storedValue.
                     storedValue->incReferenceCount();
-                    // Decrement only node's own rc by 1 — for the single reference
-                    // being replaced by storedValue in this parent.  Do not use
-                    // recursivelyDecReferenceCount: node may still be referenced by
-                    // other parents (e.g. a NULLCHK treetop) and its children must
-                    // remain live for those uses.  recursivelyDecReferenceCount would
-                    // free the children when rc drops to 0 on the last replacement,
-                    // but those children are still reachable via the other parents
-                    // that have not yet been forwarded.
-                    //
-                    // Use deferInvalidatingUseDefInfo=true so prepareForNodeRemoval
-                    // does not call setUseDefInfo(NULL) while GVP holds a cached
-                    // use-def pointer.
                     if (vp->optimizer()->prepareForNodeRemoval(node, /* deferInvalidatingUseDefInfo = */ true))
                         vp->invalidateUseDefInfo();
                     node->decReferenceCount();
-                    // If other treetops still reference this node, reset the visit
-                    // count so VP re-processes those uses and replaces them too.
-                    if (node->getReferenceCount() > 0)
-                        node->setVisitCount(0);
                     return storedValue;
                     }
                 }

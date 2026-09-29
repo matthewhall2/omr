@@ -4368,20 +4368,6 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                         //   child(0) = aladd/aiadd (store address)
                         //   child(1) = value being stored
                         //   child(2) = destination object for write barrier
-
-                        // If the anewarray is the value being stored into another
-                        // object or array, it escapes — abort the scan.
-                        if (wrtbar->getNumChildren() >= 2
-                            && vp->getValueNumber(wrtbar->getChild(1)) == vp->getValueNumber(node))
-                            {
-                            if (vp->trace())
-                                logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:   anewarray n%dn escapes via awrtbari n%dn value child — aborting scan\n",
-                                    node->getGlobalIndex(), wrtbar->getGlobalIndex());
-                            node->setAllocationCanBeRemoved(false);
-                            break;
-                            }
-
                         if (wrtbar->getNumChildren() < 3
                             || !wrtbar->getChild(0)->getOpCode().isArrayRef())
                             {

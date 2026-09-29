@@ -4152,20 +4152,11 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                     node->getGlobalIndex(), fNode->getGlobalIndex());
                             escaped = true;
                             }
-
-                        // If the anewarray escapes — passed as a call argument, or stored
-                        // as a value into any field/array/local — do not forward its stores.
-                        // Use value numbers: the VN propagates through any astore/aload
-                        // temps, so a single O(1) comparison per child is sufficient.
-                        //
-                        // On escape: purge any entries already recorded in the forwarding
-                        // and store-TT maps for this anewarray (keyed by upper 32 bits =
-                        // node->getGlobalIndex()), then break out of the scan.
-                        
+ 
                         int32_t arrayVN = vp->getValueNumber(node);
 
                         // Escape via call argument.
-                        if (fNode->getOpCode().isCall())
+                        if (!escaped && fNode->getOpCode().isCall())
                             {
                             int32_t firstArgIndex = fNode->getFirstArgumentIndex();
                             for (int32_t i = firstArgIndex; i < fNode->getNumChildren(); ++i)

@@ -4144,6 +4144,29 @@ TR::Node *constrainVariableNewArray(OMR::ValuePropagation *vp, TR::Node *node)
     return node;
 }
 
+static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *node)
+    {
+    uint32_t gIdx = (uint32_t)node->getGlobalIndex();
+    TR::list<uint64_t, TR::Region &> toRemove(vp->comp()->trMemory()->currentStackRegion());
+    {
+    auto fwdCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(vp->_arrayShadowForwardingMap);
+    for (fwdCursor.SetToFirst(); fwdCursor.Valid(); fwdCursor.SetToNext())
+        {
+        uint64_t k = vp->_arrayShadowForwardingMap.KeyAt(fwdCursor);
+        if ((k >> 32) == gIdx)
+            toRemove.push_back(k);
+        }
+    }
+    for (auto k : toRemove)
+        {
+        CS2::HashIndex idx;
+        if (vp->_arrayShadowForwardingMap.Locate(k, idx))
+            vp->_arrayShadowForwardingMap.Remove(idx);
+        if (vp->_arrayShadowStoreTTMap.Locate(k, idx))
+            vp->_arrayShadowStoreTTMap.Remove(idx);
+        }
+    }
+
 TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
 {
     constrainChildren(vp, node);
@@ -4316,29 +4339,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
 
                         if (escaped)
                             {
-                            // Purge any forwarding/store-TT entries recorded so far for
-                            // this anewarray.  Keys are (globalIndex << 32 | offset);
-                            // collect matching keys first, then remove to avoid mutating
-                            // the table while iterating.
-                            uint32_t gIdx = (uint32_t)node->getGlobalIndex();
-                            TR::list<uint64_t, TR::Region &> toRemove(vp->comp()->trMemory()->currentStackRegion());
-                            {
-                            auto fwdCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(vp->_arrayShadowForwardingMap);
-                            for (fwdCursor.SetToFirst(); fwdCursor.Valid(); fwdCursor.SetToNext())
-                                {
-                                uint64_t k = vp->_arrayShadowForwardingMap.KeyAt(fwdCursor);
-                                if ((k >> 32) == gIdx)
-                                    toRemove.push_back(k);
-                                }
-                            }
-                            for (auto k : toRemove)
-                                {
-                                CS2::HashIndex idx;
-                                if (vp->_arrayShadowForwardingMap.Locate(k, idx))
-                                    vp->_arrayShadowForwardingMap.Remove(idx);
-                                if (vp->_arrayShadowStoreTTMap.Locate(k, idx))
-                                    vp->_arrayShadowStoreTTMap.Remove(idx);
-                                }
+                            removeArrayForwardingEntries(vp, node);
                             break;
                             }
                         }
@@ -4645,25 +4646,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                     "VP ARRAY FORWARD:   slot [anewarray n%dn offset %lld] written twice (n%dn) — purging all entries and aborting scan\n",
                                     node->getGlobalIndex(), (long long)offset,
                                     wrtbar->getGlobalIndex());
-                            uint32_t gIdx = (uint32_t)node->getGlobalIndex();
-                            TR::list<uint64_t, TR::Region &> toRemove(vp->comp()->trMemory()->currentStackRegion());
-                            {
-                            auto fwdCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(vp->_arrayShadowForwardingMap);
-                            for (fwdCursor.SetToFirst(); fwdCursor.Valid(); fwdCursor.SetToNext())
-                                {
-                                uint64_t k = vp->_arrayShadowForwardingMap.KeyAt(fwdCursor);
-                                if ((k >> 32) == gIdx)
-                                    toRemove.push_back(k);
-                                }
-                            }
-                            for (auto k : toRemove)
-                                {
-                                CS2::HashIndex ridx;
-                                if (vp->_arrayShadowForwardingMap.Locate(k, ridx))
-                                    vp->_arrayShadowForwardingMap.Remove(ridx);
-                                if (vp->_arrayShadowStoreTTMap.Locate(k, ridx))
-                                    vp->_arrayShadowStoreTTMap.Remove(ridx);
-                                }
+                            removeArrayForwardingEntries(vp, node);
                             break;
                             }
                         }

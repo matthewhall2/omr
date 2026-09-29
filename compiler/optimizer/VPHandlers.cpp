@@ -1934,16 +1934,6 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                             node->getGlobalIndex());
                     }
 
-                // On compressed-refs JVMs an array-shadow aloadi is anchored as
-                // child(0) of a compressedRefs treetop so the codegen knows to
-                // sign-extend the narrow oop.  If we forward here while the parent
-                // is compressedRefs we would put a full reference inside a node
-                // that expects a narrow one, corrupting the value.
-                //
-                // Skip the replacement for that visit but reset visitCount so that
-                // VP re-visits the aloadi from every other consumer (call args,
-                // etc.) where the parent is NOT compressedRefs — those visits will
-                // forward correctly with rc == 1.
                 TR::Node *curParent = vp->getCurrentParent();
                 if (storedValue != NULL
                     && curParent != NULL
@@ -1963,24 +1953,6 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                     TR::Node::recreate(curParent, TR::treetop);
                     vp->setChecksRemoved();
                     node->setVisitCount(0);
-                    }
-                else if (storedValue != NULL
-                    && curParent != NULL
-                    && curParent->getOpCodeValue() == TR::compressedRefs
-                    && node->getReferenceCount() > 1)
-                    {
-                    // The aloadi has other consumers beyond this compressedRefs anchor.
-                    // Reset visit count so those non-compressedRefs consumers each get
-                    // their own constrainAloadi call and forward there.
-                    // When rc==1 this anchor is the only consumer — fall through to the
-                    // forwarding path below and handle it directly.
-                    node->setVisitCount(0);
-                    if (vp->trace())
-                        logprintf(vp->trace(), vp->comp()->log(),
-                            "VP ARRAY FORWARD:   defer aloadi n%dn: parent is compressedRefs, rc=%d "
-                            "(will forward at direct consumer)\n",
-                            node->getGlobalIndex(),
-                            node->getReferenceCount());
                     }
                 else if (storedValue != NULL
                     // storedValue is always a leaf (aload of a parm, or aload of the

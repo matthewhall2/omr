@@ -4295,19 +4295,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
 
                         TR::Node *valueChild = wrtbar->getChild(1);
 
-                        // For an aload of a non-parameter Auto, use use-def to decide
-                        // whether it is safe to forward.  The concern is path-dependent
-                        // Autos: when multiple inlined copies of the same callee all
-                        // resolve to the same anewarray, stores from the "wrong" copy
-                        // show up in the scan with an Auto whose def lives on a different
-                        // path.  Those have multiple reaching defs (one per inlined copy).
-                        //
-                        // Autos created by uncommoning (e.g. opcodeExpansion capturing an
-                        // acall result with rc>1) have exactly one def that dominates here
-                        // and are safe to forward.
-                        //
-                        // Rule: skip if (a) no use-def info, (b) no use index, (c) use-def
-                        // returns != 1 def, or (d) the single def is the entry def.
+                        // check for unique definition. To forward, value must not be ambiguous
                         if (valueChild->getOpCode().isLoadVarDirect()
                             && valueChild->getOpCode().hasSymbolReference()
                             && valueChild->getSymbol()->isAutoOrParm()
@@ -4358,25 +4346,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                         CS2::HashIndex idx;
                         if (!vp->_arrayShadowForwardingMap.Locate(key, idx))
                             {
-                            // Always privatize the value into  astore <new Auto> = valueChild
-                            // and record  aload <new Auto>  as the forwarded node.
-                            //
-                            // This is necessary even for leaf nodes (aload of parm/auto).
-                            // The scan runs during constrainANewArray, which happens when VP
-                            // visits the anewarray node — BEFORE constrainWrtBar visits the
-                            // awrtbari and calls constrainChildren on its children.
-                            // constrainChildren can replace a child node in-place
-                            // (ValuePropagationCommon.cpp: parent->setChild(whichChild, newNode))
-                            // so the original valueChild pointer stored in the map can become
-                            // stale: the awrtbari's child is updated but the map still holds
-                            // the old node.  When constrainAloadi later fetches the stale
-                            // pointer from the map and calls methods on it, the JIT crashes
-                            // with a GPF on a corrupt vtable (observed: RDI=0x0061307437546646,
-                            // TRAPNO=0xD inside libj9jit29.so).
-                            //
-                            // By always privatizing we store a freshly-created aload node
-                            // that is NOT a child of the awrtbari and thus is immune to
-                            // being replaced by constrainChildren.
+                            // store value to temp so that constrainChildren does not mess with it
                             TR::SymbolReference *tempSymRef =
                                 vp->comp()->getSymRefTab()->createTemporary(
                                     vp->comp()->getMethodSymbol(), TR::Address);
@@ -4384,8 +4354,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                 TR::astore, 1, 1, valueChild, tempSymRef);
                             TR::TreeTop *astoreTT = TR::TreeTop::create(
                                 vp->comp(), astoreNode, NULL, NULL);
-                            // Insert the astore immediately before the awrtbari's
-                            // wrapper treetop so the temp is defined before the store.
+
                             ftt->insertBefore(astoreTT);
                             TR::Node *forwardedValue = TR::Node::createWithSymRef(
                                 TR::aload, 0, tempSymRef);
@@ -4406,10 +4375,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             }
                         else
                             {
-                            // A second store to the same slot: we can no longer prove which
-                            // value is live at any load.  Purge all entries recorded for
-                            // this anewarray and abort the scan — there is nothing useful
-                            // left to collect.
+                            // same element is stored to more than once. abort the optimization
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
                                     "VP ARRAY FORWARD:   slot [anewarray n%dn offset %lld] written twice (n%dn) — purging all entries and aborting scan\n",

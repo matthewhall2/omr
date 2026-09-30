@@ -1870,6 +1870,12 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
         {
         if (!node->getFirstChild()->getOpCode().isArrayRef())
             {
+            fprintf(stderr, "VP ARRAY FORWARD: skip aloadi n%dn: addr child %s n%dn is not arrayref in method [%s]\n",
+                node->getGlobalIndex(),
+                node->getFirstChild()->getOpCode().getName(),
+                node->getFirstChild()->getGlobalIndex(),
+                vp->comp()->signature());
+            fflush(stderr);
             if (vp->trace())
                 logprintf(vp->trace(), vp->comp()->log(),
                     "VP ARRAY FORWARD: skip aloadi n%dn: addr child %s n%dn is not arrayref\n",
@@ -1895,6 +1901,10 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
         // Offset must be a constant.
         if (!offsetNode->getOpCode().isLoadConst())
             {
+            fprintf(stderr, "VP ARRAY FORWARD:   skip aloadi n%dn: non-constant offset in method [%s]\n",
+                node->getGlobalIndex(),
+                vp->comp()->signature());
+            fflush(stderr);
             if (vp->trace())
                 logprintf(vp->trace(), vp->comp()->log(),
                     "VP ARRAY FORWARD:   skip aloadi n%dn: non-constant offset\n",
@@ -4050,6 +4060,10 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             && fNode->getNumChildren() >= 1
                             && vp->getValueNumber(fNode->getFirstChild()) == vp->getValueNumber(node))
                             {
+                            fprintf(stderr, "VP ARRAY FORWARD:   anewarray n%dn escapes via areturn n%dn — aborting scan in method [%s]\n",
+                                node->getGlobalIndex(), fNode->getGlobalIndex(),
+                                vp->comp()->signature());
+                            fflush(stderr);
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
                                     "VP ARRAY FORWARD:   anewarray n%dn escapes via areturn n%dn — aborting scan\n",
@@ -4078,6 +4092,10 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                 {
                                 if (vp->getValueNumber(callNode->getChild(i)) == arrayVN)
                                     {
+                                    fprintf(stderr, "VP ARRAY FORWARD:   anewarray n%dn escapes via call arg %d of n%dn — aborting scan in method [%s]\n",
+                                        node->getGlobalIndex(), i, callNode->getGlobalIndex(),
+                                        vp->comp()->signature());
+                                    fflush(stderr);
                                     if (vp->trace())
                                         logprintf(vp->trace(), vp->comp()->log(),
                                             "VP ARRAY FORWARD:   anewarray n%dn escapes via call arg %d of n%dn — aborting scan\n",
@@ -4097,6 +4115,10 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             if (fNode->getNumChildren() >= 2
                                 && vp->getValueNumber(fNode->getChild(1)) == arrayVN)
                                 {
+                                fprintf(stderr, "VP ARRAY FORWARD:   anewarray n%dn escapes via indirect store n%dn value child — aborting scan in method [%s]\n",
+                                    node->getGlobalIndex(), fNode->getGlobalIndex(),
+                                    vp->comp()->signature());
+                                fflush(stderr);
                                 if (vp->trace())
                                     logprintf(vp->trace(), vp->comp()->log(),
                                         "VP ARRAY FORWARD:   anewarray n%dn escapes via indirect store n%dn value child — aborting scan\n",
@@ -4158,6 +4180,10 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                         if (wrtbar->getNumChildren() < 3
                             || !wrtbar->getChild(0)->getOpCode().isArrayRef())
                             {
+                            fprintf(stderr, "VP ARRAY FORWARD:   skip n%dn: bad child count or addr not arrayref in method [%s]\n",
+                                wrtbar->getGlobalIndex(),
+                                vp->comp()->signature());
+                            fflush(stderr);
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
                                     "VP ARRAY FORWARD:   skip n%dn: bad child count or addr not arrayref\n",
@@ -4171,6 +4197,10 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
 
                         if (!offsetNode->getOpCode().isLoadConst())
                             {
+                            fprintf(stderr, "VP ARRAY FORWARD:   skip n%dn: non-constant offset in method [%s]\n",
+                                wrtbar->getGlobalIndex(),
+                                vp->comp()->signature());
+                            fflush(stderr);
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
                                     "VP ARRAY FORWARD:   skip n%dn: non-constant offset\n",
@@ -4181,6 +4211,10 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                         // Check that the store base is this anewarray via value number.
                         if (vp->getValueNumber(storeBase) != vp->getValueNumber(node))
                             {
+                            fprintf(stderr, "VP ARRAY FORWARD:   skip n%dn: store base n%dn is not this anewarray n%dn in method [%s]\n",
+                                wrtbar->getGlobalIndex(), storeBase->getGlobalIndex(), node->getGlobalIndex(),
+                                vp->comp()->signature());
+                            fflush(stderr);
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
                                     "VP ARRAY FORWARD:   skip n%dn: store base n%dn is not this anewarray n%dn\n",
@@ -4216,6 +4250,10 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                 }
                             if (skipValue)
                                 {
+                                fprintf(stderr, "VP ARRAY FORWARD:   skip n%dn: value n%dn is aload of Auto with ambiguous def in method [%s]\n",
+                                    wrtbar->getGlobalIndex(), valueChild->getGlobalIndex(),
+                                    vp->comp()->signature());
+                                fflush(stderr);
                                 if (vp->trace())
                                     logprintf(vp->trace(), vp->comp()->log(),
                                         "VP ARRAY FORWARD:   skip n%dn: value n%dn is aload of Auto with ambiguous def\n",
@@ -4270,6 +4308,11 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                         else
                             {
                             // same element is stored to more than once. abort the optimization
+                            fprintf(stderr, "VP ARRAY FORWARD:   slot [anewarray n%dn offset %lld] written twice (n%dn) — purging all entries and aborting scan in method [%s]\n",
+                                node->getGlobalIndex(), (long long)offset,
+                                wrtbar->getGlobalIndex(),
+                                vp->comp()->signature());
+                            fflush(stderr);
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
                                     "VP ARRAY FORWARD:   slot [anewarray n%dn offset %lld] written twice (n%dn) — purging all entries and aborting scan\n",

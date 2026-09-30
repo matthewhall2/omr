@@ -987,8 +987,8 @@ CS2_HT_TEMP void inline CS2_HT_DECL::Remove(HashIndex hashIndex)
         }
 
         fTable[collisionIndex].SetCollisionChain(fTable[hashIndex].CollisionChain());
-        fTable[hashIndex].SetCollisionChain(fNextFree);
         fTable[hashIndex].~HashTableEntry();
+        fTable[hashIndex].SetCollisionChain(fNextFree);
 
         fNextFree = hashIndex;
     } else {
@@ -1002,11 +1002,13 @@ CS2_HT_TEMP void inline CS2_HT_DECL::Remove(HashIndex hashIndex)
             HashIndex firstCollision = collisionChain;
 
             fTable[hashIndex] = fTable[firstCollision];
+            fTable[firstCollision].~HashTableEntry();
             fTable[firstCollision].SetCollisionChain(fNextFree);
-            fTable[firstCollision].Invalidate();
             fNextFree = firstCollision;
             if (firstCollision > hashIndex)
                 hashIndex = firstCollision;
+        } else {
+            fTable[hashIndex].SetCollisionChain(0);
         }
     }
 

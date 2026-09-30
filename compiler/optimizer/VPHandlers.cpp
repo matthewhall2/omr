@@ -4059,23 +4059,35 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
  
                         int32_t arrayVN = vp->getValueNumber(node);
 
-                        // Escape via call argument.
+                        // Escape via call argument.  The call may appear as the treetop-level
+                        // node (plain acall/call treetop) or as the first child of a wrapping
+                        // node (e.g. areturn(acall(...)), treetop(acall(...))).  Check both.
+                        {
+                        TR::Node *callNode = NULL;
                         if (!escaped && fNode->getOpCode().isCall())
+                            callNode = fNode;
+                        else if (!escaped
+                                 && fNode->getNumChildren() >= 1
+                                 && fNode->getFirstChild()->getOpCode().isCall())
+                            callNode = fNode->getFirstChild();
+
+                        if (callNode != NULL)
                             {
-                            int32_t firstArgIndex = fNode->getFirstArgumentIndex();
-                            for (int32_t i = firstArgIndex; i < fNode->getNumChildren(); ++i)
+                            int32_t firstArgIndex = callNode->getFirstArgumentIndex();
+                            for (int32_t i = firstArgIndex; i < callNode->getNumChildren(); ++i)
                                 {
-                                if (vp->getValueNumber(fNode->getChild(i)) == arrayVN)
+                                if (vp->getValueNumber(callNode->getChild(i)) == arrayVN)
                                     {
                                     if (vp->trace())
                                         logprintf(vp->trace(), vp->comp()->log(),
                                             "VP ARRAY FORWARD:   anewarray n%dn escapes via call arg %d of n%dn — aborting scan\n",
-                                            node->getGlobalIndex(), i, fNode->getGlobalIndex());
+                                            node->getGlobalIndex(), i, callNode->getGlobalIndex());
                                     escaped = true;
                                     break;
                                     }
                                 }
                             }
+                        }
 
                         // stored to a non-local
                         if (!escaped

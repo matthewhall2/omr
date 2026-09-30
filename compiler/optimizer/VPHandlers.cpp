@@ -4051,6 +4051,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             node->getGlobalIndex(), node);
 
                     TR_UseDefInfo *useDefInfo = vp->_useDefInfo;
+                    static const bool vpArrayForwardDebug = feGetEnv("TR_vpArrayForwardDebug") != NULL;
 
                     for (TR::TreeTop *ftt = vp->_curTree->getNextTreeTop();
                          ftt != NULL;
@@ -4067,7 +4068,6 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             && fNode->getNumChildren() >= 1
                             && vp->getValueNumber(fNode->getFirstChild()) == vp->getValueNumber(node))
                             {
-                            static const bool vpArrayForwardDebug = feGetEnv("TR_vpArrayForwardDebug") != NULL;
                             if (vpArrayForwardDebug)
                                 {
                                 fprintf(stderr, "VP ARRAY FORWARD:   anewarray n%dn escapes via areturn n%dn — aborting scan in method [%s]\n",

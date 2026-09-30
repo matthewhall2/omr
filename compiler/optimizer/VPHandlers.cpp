@@ -4055,7 +4055,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             || fNode->getOpCodeValue() == TR::BBStart)
                             continue;
 
-                        bool escaped = false;
+                        bool escapes = false;
                         if (fNode->getOpCode().isReturn()
                             && fNode->getNumChildren() >= 1
                             && vp->getValueNumber(fNode->getFirstChild()) == vp->getValueNumber(node))
@@ -4068,7 +4068,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                 logprintf(vp->trace(), vp->comp()->log(),
                                     "VP ARRAY FORWARD:   anewarray n%dn escapes via areturn n%dn — aborting scan\n",
                                     node->getGlobalIndex(), fNode->getGlobalIndex());
-                            escaped = true;
+                            escapes = true;
                             }
  
                         int32_t arrayVN = vp->getValueNumber(node);
@@ -4078,9 +4078,9 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                         // node (e.g. areturn(acall(...)), treetop(acall(...))).  Check both.
                         {
                         TR::Node *callNode = NULL;
-                        if (!escaped && fNode->getOpCode().isCall())
+                        if (!escapes && fNode->getOpCode().isCall())
                             callNode = fNode;
-                        else if (!escaped
+                        else if (!escapes
                                  && fNode->getNumChildren() >= 1
                                  && fNode->getFirstChild()->getOpCode().isCall())
                             callNode = fNode->getFirstChild();
@@ -4100,14 +4100,14 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                         logprintf(vp->trace(), vp->comp()->log(),
                                             "VP ARRAY FORWARD:   anewarray n%dn escapes via call arg %d of n%dn — aborting scan\n",
                                             node->getGlobalIndex(), i, callNode->getGlobalIndex());
-                                    escaped = true;
+                                    escapes = true;
                                     }
                                 }
                             }
                         }
 
                         // stored to a non-local
-                        if (!escaped
+                        if (!escapes
                             && fNode->getOpCode().isStore()
                             && fNode->getOpCode().isIndirect())
                             {
@@ -4122,11 +4122,11 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                     logprintf(vp->trace(), vp->comp()->log(),
                                         "VP ARRAY FORWARD:   anewarray n%dn escapes via indirect store n%dn value child — aborting scan\n",
                                         node->getGlobalIndex(), fNode->getGlobalIndex());
-                                escaped = true;
+                                escapes = true;
                                 }
                             }
 
-                        if (escaped)
+                        if (escapes)
                             {
                             removeArrayForwardingEntries(vp, node);
                             break;

@@ -4101,7 +4101,6 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                             "VP ARRAY FORWARD:   anewarray n%dn escapes via call arg %d of n%dn — aborting scan\n",
                                             node->getGlobalIndex(), i, callNode->getGlobalIndex());
                                     escaped = true;
-                                    break;
                                     }
                                 }
                             }

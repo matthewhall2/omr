@@ -3987,10 +3987,10 @@ static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *no
         {
             uint64_t k = vp->_arrayShadowForwardingMap.KeyAt(fwdCursor);
             logprintf(vp->trace(), vp->comp()->log(),
-                    "VP ARRAY FORWARD: entry has key %ld\n", k);
+                    "VP ARRAY FORWARD: entry has key %llu\n", k);
             if ((k >> 32) == gIdx) {
                 logprintf(vp->trace(), vp->comp()->log(),
-                    "VP ARRAY FORWARD: removing key %ld\n", k);
+                    "VP ARRAY FORWARD: removing key %llu\n", k);
                 toRemove.push_back(k);
             }
         }

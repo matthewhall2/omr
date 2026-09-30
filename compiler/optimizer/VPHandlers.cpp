@@ -3976,27 +3976,36 @@ TR::Node *constrainVariableNewArray(OMR::ValuePropagation *vp, TR::Node *node)
 }
 
 static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *node)
-    {
+{
     uint32_t gIdx = (uint32_t)vp->getValueNumber(node);
+    logprintf(vp->trace(), vp->comp()->log(),
+                                        "VP ARRAY FORWARD: removing entries for node n%dn with vn=%d\n", node->getGlobalIndex(), vp->getValueNumber(node));
     TR::list<uint64_t, TR::Region &> toRemove(vp->comp()->trMemory()->currentStackRegion());
     {
-    auto fwdCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(vp->_arrayShadowForwardingMap);
-    for (fwdCursor.SetToFirst(); fwdCursor.Valid(); fwdCursor.SetToNext())
+        auto fwdCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(vp->_arrayShadowForwardingMap);
+        for (fwdCursor.SetToFirst(); fwdCursor.Valid(); fwdCursor.SetToNext())
         {
-        uint64_t k = vp->_arrayShadowForwardingMap.KeyAt(fwdCursor);
-        if ((k >> 32) == gIdx)
-            toRemove.push_back(k);
+            uint64_t k = vp->_arrayShadowForwardingMap.KeyAt(fwdCursor);
+            logprintf(vp->trace(), vp->comp()->log(),
+                    "VP ARRAY FORWARD: entry has key %ld\n", k);
+            if ((k >> 32) == gIdx) {
+                logprintf(vp->trace(), vp->comp()->log(),
+                    "VP ARRAY FORWARD: removing key %ld\n", k);
+                toRemove.push_back(k);
+            }
         }
     }
     for (auto k : toRemove)
-        {
-        CS2::HashIndex idx;
-        if (vp->_arrayShadowForwardingMap.Locate(k, idx))
-            vp->_arrayShadowForwardingMap.Remove(idx);
-        if (vp->_arrayShadowStoreTTMap.Locate(k, idx))
-            vp->_arrayShadowStoreTTMap.Remove(idx);
-        }
+    {
+        CS2::HashIndex fwdIdx;
+        if (vp->_arrayShadowForwardingMap.Locate(k, fwdIdx))
+            vp->_arrayShadowForwardingMap.Remove(fwdIdx);
+
+        CS2::HashIndex storeIdx;
+        if (vp->_arrayShadowStoreTTMap.Locate(k, storeIdx))
+            vp->_arrayShadowStoreTTMap.Remove(storeIdx);
     }
+}
 
 TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
 {

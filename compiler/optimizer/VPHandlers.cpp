@@ -4000,10 +4000,19 @@ static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *no
         CS2::HashIndex fwdIdx;
         if (vp->_arrayShadowForwardingMap.Locate(k, fwdIdx))
             vp->_arrayShadowForwardingMap.Remove(fwdIdx);
+        if (vp->_arrayShadowForwardingMap.Locate(k, fwdIdx)) {
+            logprintf(vp->trace(), vp->comp()->log(),
+                    "VP ARRAY FORWARD: Fwd map failed to remove key %llu\n", k);
+        }
 
         CS2::HashIndex storeIdx;
         if (vp->_arrayShadowStoreTTMap.Locate(k, storeIdx))
             vp->_arrayShadowStoreTTMap.Remove(storeIdx);
+
+            if (vp->_arrayShadowStoreTTMap.Locate(k, storeIdx)) {
+            logprintf(vp->trace(), vp->comp()->log(),
+                    "VP ARRAY FORWARD: TT map failed to remove key %llu\n", k);
+        }
     }
 }
 

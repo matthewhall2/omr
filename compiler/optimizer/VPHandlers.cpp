@@ -4154,7 +4154,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             }
 
                         static bool disableEscapeAnalysisInStoreSpreadEliminiation = feGetEnv("TR_disableEscapeAnalysisInStoreSpreadEliminiation") != NULL;
-                        if (escapes)
+                        if (escapes && !disableEscapeAnalysisInStoreSpreadEliminiation)
                             {
                             logprintf(vp->trace(), vp->comp()->log(),
                                         "VP ARRAY FORWARD: scan aborted - invalidating array\n",

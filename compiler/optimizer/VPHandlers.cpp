@@ -39,6 +39,7 @@
 #include "env/IO.hpp"
 #include "env/ObjectModel.hpp"
 #include "env/PersistentInfo.hpp"
+#include "env/TRFrontEnd.hpp"
 #include "env/TRMemory.hpp"
 #include "env/TypeLayout.hpp"
 #include "env/jittypes.h"
@@ -4152,6 +4153,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                 }
                             }
 
+                        static bool disableEscapeAnalysisInStoreSpreadEliminiation = feGetEnv("TR_disableEscapeAnalysisInStoreSpreadEliminiation") != NULL;
                         if (escapes)
                             {
                             logprintf(vp->trace(), vp->comp()->log(),

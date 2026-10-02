@@ -4340,9 +4340,6 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                                     tempSymRef->getReferenceNumber());
 
                             vp->_arrayShadowForwardingMap.Add(key, forwardedValue);
-                            vp->_arrayShadowForwardingMap.MakeEmpty();
-                            CS2::HashIndex idx2;
-                            TR_ASSERT_FATAL(!vp->_arrayShadowForwardingMap.Locate(key, idx2), "map still has key after emptying\n");
                             vp->_arrayShadowStoreTTMap.Add(key, ftt);
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),

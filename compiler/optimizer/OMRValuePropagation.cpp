@@ -6632,8 +6632,10 @@ void OMR::ValuePropagation::doDelayedTransformations()
         removeNode(storeTT->getNode(), false);
         TR::TransformUtil::removeTree(comp(), storeTT);
         }
-    _forwardedStoreTreesToRemove.deleteAll();
+    _forwardedStoreTreesToRemove.init();
     }
+    _arrayShadowForwardingMap.MakeEmpty();
+    _arrayShadowStoreTTMap.MakeEmpty();
 
     // Execute deferred in-place morphs for shared (rc > 1) aloadi nodes that
     // were forwarded to a known stored value during the GVP walk.  Done here
@@ -6660,7 +6662,7 @@ void OMR::ValuePropagation::doDelayedTransformations()
                 load->getGlobalIndex(),
                 storedValue->getOpCode().getName());
         }
-    _pendingAlloadiMorphs.deleteAll();
+    _pendingAlloadiMorphs.init();
     }
 
     ListIterator<TR_TreeTopNodePair> treesIt1(&_scalarizedArrayCopies);

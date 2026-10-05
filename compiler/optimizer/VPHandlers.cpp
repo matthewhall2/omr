@@ -4063,14 +4063,19 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                     TR_UseDefInfo *useDefInfo = vp->_useDefInfo;
                     static const bool vpArrayForwardDebug = feGetEnv("TR_vpArrayForwardDebug") != NULL;
 
+                    TR::Block *fBlock = vp->_curBlock;
                     for (TR::TreeTop *ftt = vp->_curTree->getNextTreeTop();
                          ftt != NULL;
                          ftt = ftt->getNextTreeTop())
                         {
                         TR::Node *fNode = ftt->getNode();
 
-                        if (fNode->getOpCodeValue() == TR::BBEnd
-                            || fNode->getOpCodeValue() == TR::BBStart)
+                        if (fNode->getOpCodeValue() == TR::BBStart)
+                            {
+                            fBlock = fNode->getBlock();
+                            continue;
+                            }
+                        if (fNode->getOpCodeValue() == TR::BBEnd)
                             continue;
 
                         bool escapes = false;
@@ -4154,7 +4159,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             }
 
                         static bool disableEscapeAnalysisInStoreSpreadEliminiation = feGetEnv("TR_disableEscapeAnalysisInStoreSpreadEliminiation") != NULL;
-                        if (escapes && !disableEscapeAnalysisInStoreSpreadEliminiation)
+                        if (escapes && !disableEscapeAnalysisInStoreSpreadEliminiation && !fBlock->isCold())
                             {
                             logprintf(vp->trace(), vp->comp()->log(),
                                         "VP ARRAY FORWARD: scan aborted - invalidating array\n",

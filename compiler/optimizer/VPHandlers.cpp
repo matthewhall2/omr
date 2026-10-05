@@ -10191,8 +10191,50 @@ TR::Node *constrainSwitch(OMR::ValuePropagation *vp, TR::Node *node)
     // if something is known about the selector, some
     // of the cases can be removed
     //
-    // FIXME: process only lookupswitches for now
+
+    // For TR::table with a constant selector, fold to a direct goto.
+    // child 0 = selector, child 1 = default, children 2..N = cases 0..N-3.
     //
+    if (node->getOpCodeValue() == TR::table)
+        {
+        TR::Node *selector = node->getFirstChild();
+        bool isGlobal;
+        TR::VPConstraint *constraint = vp->getConstraint(selector, isGlobal);
+        if (constraint && constraint->asIntConstraint()
+            && constraint->asIntConstraint()->getLow() == constraint->asIntConstraint()->getHigh()
+            && performTransformation(vp->comp(), "%sFolding TR::table n%un with constant selector %d to goto\n",
+                OPT_DETAILS, node->getGlobalIndex(), constraint->asIntConstraint()->getLow()))
+            {
+            int32_t val = constraint->asIntConstraint()->getLow();
+            int32_t numCases = node->getNumChildren() - 2; // excludes selector and default
+            TR::TreeTop *targetTT = (val >= 0 && val < numCases)
+                ? node->getChild(val + 2)->getBranchDestination()
+                : node->getChild(1)->getBranchDestination(); // default
+            TR::Block *targetBlock = targetTT->getNode()->getBlock();
+
+            // Mark all successor edges except the chosen one as unreachable
+            //
+            TR::CFGEdge *takenEdge = vp->findOutEdge(vp->_curBlock->getSuccessors(), targetBlock);
+            for (auto e = vp->_curBlock->getSuccessors().begin(); e != vp->_curBlock->getSuccessors().end(); ++e)
+                {
+                if (*e != takenEdge)
+                    {
+                    vp->setUnreachablePath(*e);
+                    vp->_edgesToBeRemoved->add(*e);
+                    }
+                }
+
+            // Replace the switch with a goto to the chosen target
+            //
+            vp->removeChildren(node, false);
+            TR::Node::recreate(node, TR::Goto);
+            node->setBranchDestination(targetTT);
+            vp->setEnableSimplifier();
+            vp->setUnreachablePath();
+            return node;
+            }
+        }
+
     if (node->getOpCodeValue() != TR::table) {
         TR::Node *selector = node->getFirstChild();
         bool isGlobal;

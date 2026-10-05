@@ -3976,6 +3976,21 @@ TR::Node *constrainVariableNewArray(OMR::ValuePropagation *vp, TR::Node *node)
     return node;
 }
 
+static bool isGuardFailureBlock(TR::Block *block, TR::Compilation *comp)
+    {
+    for (auto e = block->getPredecessors().begin(); e != block->getPredecessors().end(); ++e)
+        {
+        TR::Block *pred = toBlock((*e)->getFrom());
+        if (pred == comp->getFlowGraph()->getStart())
+            continue;
+        TR::Node *last = pred->getLastRealTreeTop()->getNode();
+        if (last->isTheVirtualGuardForAGuardedInlinedCall()
+            && last->getBranchDestination()->getEnclosingBlock() == block)
+            return true;
+        }
+    return false;
+    }
+
 static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *node)
 {
     uint32_t gIdx = (uint32_t)vp->getValueNumber(node);
@@ -4159,7 +4174,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             }
 
                         static bool disableEscapeAnalysisInStoreSpreadEliminiation = feGetEnv("TR_disableEscapeAnalysisInStoreSpreadEliminiation") != NULL;
-                        if (escapes && !disableEscapeAnalysisInStoreSpreadEliminiation && !fBlock->isCold())
+                        if (escapes && !disableEscapeAnalysisInStoreSpreadEliminiation && !fBlock->isCold() && !isGuardFailureBlock(fBlock, vp->comp()))
                             {
                             logprintf(vp->trace(), vp->comp()->log(),
                                         "VP ARRAY FORWARD: scan aborted - invalidating array\n",

@@ -4182,6 +4182,16 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             removeArrayForwardingEntries(vp, node);
                             break;
                             }
+                        else if (fBlock->isCold()) {
+                            logprintf(vp->trace(), vp->comp()->log(),
+                                        "blockis cold, not aborting\n",
+                                        node->getGlobalIndex(), fNode->getGlobalIndex());
+                        }
+                        else if (isGuardFailureBlock(fBlock, vp->comp())) {
+ logprintf(vp->trace(), vp->comp()->log(),
+                                        "block is failure guard, not aborting\n",
+                                        node->getGlobalIndex(), fNode->getGlobalIndex());
+                        }
 
                         TR::Node *wrtbar = NULL;
                         if (fNode->getOpCodeValue() == TR::awrtbari)

@@ -5165,11 +5165,13 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
     constrainChildren(vp, node);
 
     // Array store-to-load forwarding: escape via call argument.
-    // Suppressed in cold/OSR blocks — those are unreachable deopt paths and
-    // the array being live there is not a real escape on the warm path.
+    // Suppressed only in OSR-specific blocks (OSR code/catch/induce) — those are
+    // unreachable deopt-transition paths where the array is live purely for the
+    // interpreter to reconstruct state, not a real escape on the warm path.
+    // Generic cold blocks (e.g. slow paths, cold inlined bodies) ARE real warm-path
+    // execution and must not be suppressed.
     if (vp->_isGlobalPropagation
         && !vp->_liveAnewarrays.IsEmpty()
-        && !vp->_curBlock->isCold()
         && !vp->_curBlock->isOSRCodeBlock()
         && !vp->_curBlock->isOSRCatchBlock()
         && !vp->_curBlock->isOSRInduceBlock())

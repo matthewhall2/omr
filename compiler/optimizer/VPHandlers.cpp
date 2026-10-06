@@ -3976,21 +3976,6 @@ TR::Node *constrainVariableNewArray(OMR::ValuePropagation *vp, TR::Node *node)
     return node;
 }
 
-static bool isGuardFailureBlock(TR::Block *block, TR::Compilation *comp)
-    {
-    for (auto e = block->getPredecessors().begin(); e != block->getPredecessors().end(); ++e)
-        {
-        TR::Block *pred = toBlock((*e)->getFrom());
-        if (pred == comp->getFlowGraph()->getStart())
-            continue;
-        TR::Node *last = pred->getLastRealTreeTop()->getNode();
-        if (last->isTheVirtualGuardForAGuardedInlinedCall()
-            && last->getBranchDestination()->getEnclosingBlock() == block)
-            return true;
-        }
-    return false;
-    }
-
 static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *node)
 {
     uint32_t gIdx = (uint32_t)vp->getValueNumber(node);
@@ -4078,20 +4063,14 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                     TR_UseDefInfo *useDefInfo = vp->_useDefInfo;
                     static const bool vpArrayForwardDebug = feGetEnv("TR_vpArrayForwardDebug") != NULL;
 
-                    TR::Block *fBlock = vp->_curBlock;
                     for (TR::TreeTop *ftt = vp->_curTree->getNextTreeTop();
                          ftt != NULL;
                          ftt = ftt->getNextTreeTop())
                         {
                         TR::Node *fNode = ftt->getNode();
 
-                        if (fNode->getOpCodeValue() == TR::BBStart)
-                            {
-                            fBlock = fNode->getBlock();
-                            continue;
-                            }
-                        if (fNode->getOpCodeValue() == TR::BBEnd)
-                            continue;
+                        if (fNode->getOpCodeValue() == TR::BBStart || fNode->getOpCodeValue() == TR::BBEnd)
+                           continue;
 
                         bool escapes = false;
                         if (fNode->getOpCode().isReturn()
@@ -4174,7 +4153,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             }
 
                         static bool disableEscapeAnalysisInStoreSpreadEliminiation = feGetEnv("TR_disableEscapeAnalysisInStoreSpreadEliminiation") != NULL;
-                        if (escapes && !disableEscapeAnalysisInStoreSpreadEliminiation && !fBlock->isCold() && !isGuardFailureBlock(fBlock, vp->comp()))
+                        if (escapes && !disableEscapeAnalysisInStoreSpreadEliminiation)
                             {
                             logprintf(vp->trace(), vp->comp()->log(),
                                         "VP ARRAY FORWARD: scan aborted - invalidating array\n",
@@ -4182,16 +4161,6 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             removeArrayForwardingEntries(vp, node);
                             break;
                             }
-                        else if (fBlock->isCold()) {
-                            logprintf(vp->trace(), vp->comp()->log(),
-                                        "blockis cold, not aborting\n",
-                                        node->getGlobalIndex(), fNode->getGlobalIndex());
-                        }
-                        else if (isGuardFailureBlock(fBlock, vp->comp())) {
- logprintf(vp->trace(), vp->comp()->log(),
-                                        "block is failure guard, not aborting\n",
-                                        node->getGlobalIndex(), fNode->getGlobalIndex());
-                        }
 
                         TR::Node *wrtbar = NULL;
                         if (fNode->getOpCodeValue() == TR::awrtbari)
@@ -10195,7 +10164,8 @@ TR::Node *constrainSwitch(OMR::ValuePropagation *vp, TR::Node *node)
     // For TR::table with a constant selector, fold to a direct goto.
     // child 0 = selector, child 1 = default, children 2..N = cases 0..N-3.
     //
-    if (node->getOpCodeValue() == TR::table)
+    static bool addTableHandling = feGetEnv("addTableHandling") != NULL;
+    if (node->getOpCodeValue() == TR::table && addTableHandling)
         {
         TR::Node *selector = node->getFirstChild();
         bool isGlobal;

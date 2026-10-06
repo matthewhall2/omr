@@ -980,20 +980,23 @@ public:
     TR_ValueNumberInfo *_valueNumberInfo; // Cached value number info
     CS2::HashTable<uint64_t, TR::list<TR::Node *> *, TR::Allocator> _constNodeInfo;
 
-    // Map from (anewarray_globalIndex << 32 | offset) to a privatized
-    // aload <temp> node whose matching astore <temp> = valueChild was inserted
-    // immediately before the awrtbari treetop during the constrainANewArray scan.
-    // The aload node is freshly created and is NOT a child of the awrtbari, so
-    // it is stable across the subsequent constrainWrtBar / constrainChildren walk
-    // (which can replace awrtbari children in-place via parent->setChild()).
-    // Populated by constrainANewArray / constrainNewArray during GVP;
-    // consumed by constrainAloadi.
+    // Set of anewarray nodes currently being tracked for store-to-load forwarding.
+    // Keyed by value number; value is the anewarray node itself (used to drive
+    // setAllocationCanBeRemoved in doDelayedTransformations).
+    // An entry is removed when an escape is detected in a non-cold/non-OSR block.
+    // Populated by constrainANewArray during GVP; cleared in doDelayedTransformations.
+    CS2::HashTable<int32_t, TR::Node *, TR::Allocator> _liveAnewarrays;
+
+    // Map from (anewarray_VN << 32 | constant_offset) to the post-constrained
+    // valueChild node of the awrtbari that wrote that slot.  The value node is
+    // always a leaf (getNumChildren() == 0) — non-leaf values are not recorded.
+    // Populated by constrainWrtBar during GVP; consumed by constrainAloadi.
     CS2::HashTable<uint64_t, TR::Node *, TR::Allocator> _arrayShadowForwardingMap;
 
     // Parallel map from the same key to the TR::TreeTop * of the awrtbari that
-    // wrote that slot.  Only populated for slots written exactly once: if a
-    // second awrtbari writes the same slot the entry is set to NULL so that
-    // constrainAloadi knows not to delete either store.
+    // wrote that slot.  Set to NULL if a second awrtbari writes the same slot so
+    // that constrainAloadi knows not to delete either store.
+    // Populated by constrainWrtBar during GVP; consumed/cleared in doDelayedTransformations.
     CS2::HashTable<uint64_t, TR::TreeTop *, TR::Allocator> _arrayShadowStoreTTMap;
 
     // Forwarded awrtbari treetops to remove in doDelayedTransformations, after

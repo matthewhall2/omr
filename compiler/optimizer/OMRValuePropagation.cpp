@@ -6617,6 +6617,27 @@ void OMR::ValuePropagation::doDelayedTransformations()
 {
     OMR::Logger *log = comp()->log();
 
+    // For each anewarray that survived the GVP walk without escaping on any
+    // warm path, set allocationCanBeRemoved now that we know it is safe.
+    // Deferred from constrainANewArray so that escapes detected in later blocks
+    // (constrainCall / constrainReturn / constrainWrtBar) can clear the entry.
+    {
+    auto liveCursor = CS2::HashTable<int32_t, TR::Node *, TR::Allocator>::Cursor(_liveAnewarrays);
+    for (liveCursor.SetToFirst(); liveCursor.Valid(); liveCursor.SetToNext())
+        {
+        TR::Node *arrNode = _liveAnewarrays[liveCursor];
+        if (arrNode != NULL)
+            {
+            if (trace())
+                logprintf(trace(), log,
+                    "VP ARRAY FORWARD: setting allocationCanBeRemoved on surviving anewarray n%dn\n",
+                    arrNode->getGlobalIndex());
+            arrNode->setAllocationCanBeRemoved(true);
+            }
+        }
+    _liveAnewarrays.MakeEmpty();
+    }
+
     // Remove awrtbari treetops whose values were fully forwarded to all
     // consuming aloadi nodes.  Done here (after the use-def assertion check
     // in GVP::perform) so that prepareForNodeRemoval cannot fire

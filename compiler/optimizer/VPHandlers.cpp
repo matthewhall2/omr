@@ -4241,6 +4241,21 @@ static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *no
     }
 }
 
+static bool isGuardFailureBlock(TR::Block *block, TR::Compilation *comp)
+    {
+    for (auto e = block->getPredecessors().begin(); e != block->getPredecessors().end(); ++e)
+        {
+        TR::Block *pred = toBlock((*e)->getFrom());
+        if (pred == comp->getFlowGraph()->getStart())
+            continue;
+        TR::Node *last = pred->getLastRealTreeTop()->getNode();
+        if (last->isTheVirtualGuardForAGuardedInlinedCall()
+            && last->getBranchDestination()->getEnclosingBlock() == block)
+            return true;
+        }
+    return false;
+    }
+
 TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
 {
     constrainChildren(vp, node);
@@ -5165,16 +5180,18 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
     constrainChildren(vp, node);
 
     // Array store-to-load forwarding: escape via call argument.
-    // Suppressed only in OSR-specific blocks (OSR code/catch/induce) — those are
-    // unreachable deopt-transition paths where the array is live purely for the
-    // interpreter to reconstruct state, not a real escape on the warm path.
-    // Generic cold blocks (e.g. slow paths, cold inlined bodies) ARE real warm-path
-    // execution and must not be suppressed.
+    // Suppressed in OSR-specific blocks (OSR code/catch/induce) — unreachable
+    // deopt-transition paths where the array is live only for interpreter state
+    // reconstruction, not a real escape on the warm path.
+    // Also suppressed in guard failure blocks (the cold taken side of a virtual
+    // guard) — those are only reached when the guard fails, i.e. the inlined
+    // assumption was wrong, so the array cannot have been forwarded there.
     if (vp->_isGlobalPropagation
         && !vp->_liveAnewarrays.IsEmpty()
         && !vp->_curBlock->isOSRCodeBlock()
         && !vp->_curBlock->isOSRCatchBlock()
-        && !vp->_curBlock->isOSRInduceBlock())
+        && !vp->_curBlock->isOSRInduceBlock()
+        && !isGuardFailureBlock(vp->_curBlock, vp->comp()))
         {
         static const bool vpArrayForwardDebug = feGetEnv("TR_vpArrayForwardDebug") != NULL;
         static bool disableEscapeAnalysisInStoreSpreadElimination = feGetEnv("TR_disableEscapeAnalysisInStoreSpreadEliminiation") != NULL;

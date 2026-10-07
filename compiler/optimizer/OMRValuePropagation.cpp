@@ -6669,6 +6669,9 @@ void OMR::ValuePropagation::doDelayedTransformations()
         {
         TR::Node *load        = p->getKey();
         TR::Node *storedValue = p->getValue();
+        // A null load pointer means the morph was cancelled by escape detection.
+        if (load == NULL)
+            continue;
         removeChildren(load);
         if (storedValue->getOpCode().hasSymbolReference())
             TR::Node::recreateWithSymRef(load, storedValue->getOpCodeValue(),
@@ -6679,7 +6682,7 @@ void OMR::ValuePropagation::doDelayedTransformations()
         invalidateValueNumberInfo();
         if (trace())
             logprintf(trace(), log,
-                "VP ARRAY FORWARD:   (delayed) morphed shared aloadi n%dn in-place to %s\n",
+                "VP ARRAY FORWARD:   (delayed) morphed aloadi n%dn in-place to %s\n",
                 load->getGlobalIndex(),
                 storedValue->getOpCode().getName());
         }

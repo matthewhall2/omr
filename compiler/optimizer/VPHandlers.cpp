@@ -3050,15 +3050,10 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
     }
 
     // Array store-to-load forwarding: handle awrtbari stores and indirect-store escapes.
-    if (vp->_isGlobalPropagation && !vp->_liveAnewarrays.IsEmpty())
+    if (node->getOpCode().isWrtBar() && vp->_isGlobalPropagation && !vp->_liveAnewarrays.IsEmpty())
         {
-        static const bool vpArrayForwardDebug = feGetEnv("TR_vpArrayForwardDebug") != NULL;
-        static bool disableEscapeAnalysisInStoreSpreadElimination = feGetEnv("TR_disableEscapeAnalysisInStoreSpreadEliminiation") != NULL;
-
-        // ── Escape: array stored as value into a non-array-shadow indirect store ──
-        // e.g. astorei <field> (object, array)   — child(1) is the value being stored
-        if (!disableEscapeAnalysisInStoreSpreadElimination
-            && node->getOpCode().isIndirect()
+        // array escapes: stored as value into a non-array-shadow indirect store
+        if (node->getOpCode().isIndirect()
             && !node->getSymbolReference()->getSymbol()->isArrayShadowSymbol()
             && node->getNumChildren() >= 2)
             {
@@ -3068,13 +3063,6 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                 && vp->_liveAnewarrays[liveIdx] != NULL)
                 {
                 TR::Node *arrNode = vp->_liveAnewarrays[liveIdx];
-                if (vpArrayForwardDebug)
-                    {
-                    fprintf(stderr, "VP ARRAY FORWARD:   anewarray n%dn escapes via indirect store n%dn value child in method [%s]\n",
-                        arrNode->getGlobalIndex(), node->getGlobalIndex(),
-                        vp->comp()->signature());
-                    fflush(stderr);
-                    }
                 if (vp->trace())
                     logprintf(vp->trace(), vp->comp()->log(),
                         "VP ARRAY FORWARD:   anewarray n%dn escapes via indirect store n%dn value child — invalidating\n",
@@ -3084,7 +3072,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                 }
             }
 
-        // ── Store recording: awrtbari into an array-shadow slot of a live anewarray ──
+        // store into const offset slot of array in live list
         if (node->getOpCodeValue() == TR::awrtbari
             && node->getSymbolReference()->getSymbol()->isArrayShadowSymbol()
             && node->getNumChildren() >= 3
@@ -3104,19 +3092,11 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                     TR::Node *arrNode  = vp->_liveAnewarrays[liveIdx];
                     TR::Node *valueChild = node->getChild(1);
 
-                    // Determine the node to forward.  For leaf nodes (aload of parm,
-                    // aconst, constRef aload) forward directly — they are safe to share
-                    // across block boundaries without re-evaluation.  For non-leaf nodes
-                    // (call results, allocations, etc.) privatise into an astore/aload
-                    // temp so that the expression is evaluated exactly once at the store
-                    // site and the forwarded leaf aload is safe to substitute elsewhere.
                     TR::Node *forwardedValue = NULL;
 
                     if (valueChild->getNumChildren() == 0)
                         {
-                        // Leaf value: check for unique definition if it is an aload of
-                        // a non-parm Auto (multiple reaching defs would mean the value
-                        // at the store site is ambiguous).
+                        // must have unique def
                         if (valueChild->getOpCode().isLoadVarDirect()
                             && valueChild->getOpCode().hasSymbolReference()
                             && valueChild->getSymbol()->isAutoOrParm()
@@ -3142,13 +3122,6 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                                 }
                             if (skipValue)
                                 {
-                                if (vpArrayForwardDebug)
-                                    {
-                                    fprintf(stderr, "VP ARRAY FORWARD:   skip n%dn: value n%dn is aload of Auto with ambiguous def in method [%s]\n",
-                                        node->getGlobalIndex(), valueChild->getGlobalIndex(),
-                                        vp->comp()->signature());
-                                    fflush(stderr);
-                                    }
                                 if (vp->trace())
                                     logprintf(vp->trace(), vp->comp()->log(),
                                         "VP ARRAY FORWARD:   skip n%dn: value n%dn is aload of Auto with ambiguous def\n",
@@ -3172,9 +3145,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                         }
                     else
                         {
-                        // Non-leaf value (call result, allocation, etc.): privatise into
-                        // an astore/aload temp so that the sub-expression is evaluated
-                        // exactly once and the forwarded value is a safe leaf.
+                        // Non-leaf value: privatise into a temp
                         TR::SymbolReference *tempSymRef =
                             vp->comp()->getSymRefTab()->createTemporary(
                                 vp->comp()->getMethodSymbol(), TR::Address);
@@ -3184,8 +3155,6 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                             vp->comp(), astoreNode, NULL, NULL);
                         vp->_curTree->insertBefore(astoreTT);
 
-                        // Replace child(1) of the awrtbari with aload <temp> so the
-                        // original valueChild sub-expression is only rooted at the astore.
                         TR::Node *tempLoad = TR::Node::createWithSymRef(
                             TR::aload, 0, tempSymRef);
                         tempLoad->setReferenceCount(1);
@@ -3225,13 +3194,6 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                         else
                             {
                             // Same slot written twice — purge all entries for this array.
-                            if (vpArrayForwardDebug)
-                                {
-                                fprintf(stderr, "VP ARRAY FORWARD:   slot [anewarray n%dn offset %lld] written twice (n%dn) — purging in method [%s]\n",
-                                    arrNode->getGlobalIndex(), (long long)offset,
-                                    node->getGlobalIndex(), vp->comp()->signature());
-                                fflush(stderr);
-                                }
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
                                     "VP ARRAY FORWARD:   slot [anewarray n%dn offset %lld] written twice (n%dn) — purging\n",
@@ -3318,13 +3280,6 @@ TR::Node *constrainReturn(OMR::ValuePropagation *vp, TR::Node *node)
                 && vp->_liveAnewarrays[liveIdx] != NULL)
                 {
                 TR::Node *arrNode = vp->_liveAnewarrays[liveIdx];
-                if (vpArrayForwardDebug)
-                    {
-                    fprintf(stderr, "VP ARRAY FORWARD:   anewarray n%dn escapes via areturn n%dn in method [%s]\n",
-                        arrNode->getGlobalIndex(), node->getGlobalIndex(),
-                        vp->comp()->signature());
-                    fflush(stderr);
-                    }
                 if (vp->trace())
                     logprintf(vp->trace(), vp->comp()->log(),
                         "VP ARRAY FORWARD:   anewarray n%dn escapes via areturn n%dn — invalidating\n",
@@ -4241,21 +4196,6 @@ static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *no
     }
 }
 
-static bool isGuardFailureBlock(TR::Block *block, TR::Compilation *comp)
-    {
-    for (auto e = block->getPredecessors().begin(); e != block->getPredecessors().end(); ++e)
-        {
-        TR::Block *pred = toBlock((*e)->getFrom());
-        if (pred == comp->getFlowGraph()->getStart())
-            continue;
-        TR::Node *last = pred->getLastRealTreeTop()->getNode();
-        if (last->isTheVirtualGuardForAGuardedInlinedCall()
-            && last->getBranchDestination()->getEnclosingBlock() == block)
-            return true;
-        }
-    return false;
-    }
-
 TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
 {
     constrainChildren(vp, node);
@@ -4298,12 +4238,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                 && vp->_isGlobalPropagation
                 && sizeConstraint->getLowInt() == sizeConstraint->getHighInt())
                 {
-                // GVP: register this anewarray for store-to-load forwarding.
-                // constrainWrtBar will record each awrtbari into _arrayShadowForwardingMap
-                // as the normal GVP walk processes them (block by block, so cold/OSR blocks
-                // are handled separately and do not cause spurious escape aborts).
-                // setAllocationCanBeRemoved is deferred to doDelayedTransformations so that
-                // it is only set for arrays that have not escaped on any warm path.
+                // add array to list. other handlers will check for the array by VN.
                 int32_t arrayVN = vp->getValueNumber(node);
                 CS2::HashIndex liveIdx;
                 if (!vp->_liveAnewarrays.Locate(arrayVN, liveIdx))
@@ -4315,10 +4250,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             node->getGlobalIndex(), arrayVN);
                     }
                 }
-            else if (arrayClass && !disableArrayStoreSpreadElimination)
-                {
-                // Size not known-constant or not GVP: still safe to mark removable
-                // (no forwarding will occur, but DTE can eliminate an unused allocation).
+            else {
                 node->setAllocationCanBeRemoved(true);
                 }
         }
@@ -5174,18 +5106,29 @@ static bool canFoldNonOverriddenGuard(OMR::ValuePropagation *vp, TR::Node *callN
     return false;
 }
 
+static bool isGuardFailureBlock(TR::Block *block, TR::Compilation *comp)
+    {
+    for (auto e = block->getPredecessors().begin(); e != block->getPredecessors().end(); ++e)
+        {
+        TR::Block *pred = toBlock((*e)->getFrom());
+        if (pred == comp->getFlowGraph()->getStart())
+            continue;
+        TR::Node *last = pred->getLastRealTreeTop()->getNode();
+        if (last->isTheVirtualGuardForAGuardedInlinedCall()
+            && last->getBranchDestination()->getEnclosingBlock() == block)
+            return true;
+        }
+    return false;
+    }
+
+
 TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
 {
     OMR::Logger *log = vp->comp()->log();
     constrainChildren(vp, node);
 
-    // Array store-to-load forwarding: escape via call argument.
-    // Suppressed in OSR-specific blocks (OSR code/catch/induce) — unreachable
-    // deopt-transition paths where the array is live only for interpreter state
-    // reconstruction, not a real escape on the warm path.
-    // Also suppressed in guard failure blocks (the cold taken side of a virtual
-    // guard) — those are only reached when the guard fails, i.e. the inlined
-    // assumption was wrong, so the array cannot have been forwarded there.
+    // Array store-spread eliminiation - array escapes through call
+    // if this is a normal call, we abort and try again the next GVP pass (in case the call was inlined)
     if (vp->_isGlobalPropagation
         && !vp->_liveAnewarrays.IsEmpty()
         && !vp->_curBlock->isOSRCodeBlock()

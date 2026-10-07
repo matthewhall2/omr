@@ -95,6 +95,7 @@
 extern TR::Node *constrainChildren(OMR::ValuePropagation *vp, TR::Node *node);
 extern TR::Node *constrainVcall(OMR::ValuePropagation *vp, TR::Node *node);
 static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *node);
+static bool isGuardFailureBlock(TR::Block *block, TR::Compilation *comp);
 
 static void checkForNonNegativeAndOverflowProperties(OMR::ValuePropagation *vp, TR::Node *node,
     TR::VPConstraint *constraint = NULL)
@@ -2059,25 +2060,20 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                             }
                         }
 
-                    // use in-place morph when ref-count < 1
-                    if (node->getReferenceCount() > 1)
-                        {
-                        vp->_pendingAlloadiMorphs.add(
-                            new (vp->trHeapMemory()) TR_Pair<TR::Node, TR::Node>(node, storedValue));
-                        if (vp->trace())
-                            logprintf(vp->trace(), vp->comp()->log(),
-                                "VP ARRAY FORWARD:   queued shared aloadi n%dn for deferred morph to %s\n",
-                                node->getGlobalIndex(),
-                                storedValue->getOpCode().getName());
-                        return node;
-                        }
-
-                    // rc == 1. replace node directly with storedValue.
-                    storedValue->incReferenceCount();
-                    if (vp->optimizer()->prepareForNodeRemoval(node, /* deferInvalidatingUseDefInfo = */ true))
-                        vp->invalidateUseDefInfo();
-                    node->decReferenceCount();
-                    return storedValue;
+                    // Always defer the aloadi → storedValue substitution to
+                    // doDelayedTransformations.  This keeps escape-detection
+                    // (which can null out _arrayShadowForwardingMap entries up
+                    // until the end of the GVP walk) able to cancel the morph
+                    // by clearing the load pointer in the queued pair.
+                    vp->_pendingAlloadiMorphs.add(
+                        new (vp->trHeapMemory()) TR_Pair<TR::Node, TR::Node>(node, storedValue));
+                    if (vp->trace())
+                        logprintf(vp->trace(), vp->comp()->log(),
+                            "VP ARRAY FORWARD:   queued aloadi n%dn (rc=%d) for deferred morph to %s\n",
+                            node->getGlobalIndex(),
+                            node->getReferenceCount(),
+                            storedValue->getOpCode().getName());
+                    return node;
                     }
                 }
             }
@@ -2771,6 +2767,49 @@ TR::Node *constrainAstore(OMR::ValuePropagation *vp, TR::Node *node)
         //
         vp->invalidateParmConstraintsIfNeeded(node, constraint);
     }
+
+    // Array store-to-load forwarding: escape via astore/astorei to a non-local.
+    // Stores to autos/parms are local and cannot cause the array to escape.
+    // awrtbar/awrtbari go through constrainWrtBar and are not seen here.
+    if (vp->_isGlobalPropagation
+        && !vp->_liveAnewarrays.IsEmpty()
+        && !node->getSymbol()->isAutoOrParm())
+        {
+        static bool disableEscapeAnalysisInStoreSpreadElimination = feGetEnv("TR_disableEscapeAnalysisInStoreSpreadEliminiation") != NULL;
+        static const bool vpArrayForwardDebug = feGetEnv("TR_vpArrayForwardDebug") != NULL;
+        if (!disableEscapeAnalysisInStoreSpreadElimination
+            && !vp->_curBlock->isOSRCodeBlock()
+            && !vp->_curBlock->isOSRCatchBlock()
+            && !vp->_curBlock->isOSRInduceBlock()
+            && !isGuardFailureBlock(vp->_curBlock, vp->comp()))
+            {
+            TR::Node *valueChild = node->getOpCode().isIndirect()
+                ? node->getSecondChild()
+                : node->getFirstChild();
+
+            int32_t valueVN = vp->getValueNumber(valueChild);
+            CS2::HashIndex liveIdx;
+            if (vp->_liveAnewarrays.Locate(valueVN, liveIdx)
+                && vp->_liveAnewarrays[liveIdx] != NULL)
+                {
+                TR::Node *arrNode = vp->_liveAnewarrays[liveIdx];
+                if (vpArrayForwardDebug)
+                    {
+                    fprintf(stderr, "VP ARRAY FORWARD:   anewarray n%dn escapes via astore/astorei n%dn in method [%s]\n",
+                        arrNode->getGlobalIndex(), node->getGlobalIndex(),
+                        vp->comp()->signature());
+                    fflush(stderr);
+                    }
+                if (vp->trace())
+                    logprintf(vp->trace(), vp->comp()->log(),
+                        "VP ARRAY FORWARD:   anewarray n%dn escapes via astore/astorei n%dn — invalidating\n",
+                        arrNode->getGlobalIndex(), node->getGlobalIndex());
+                removeArrayForwardingEntries(vp, arrNode);
+                vp->_liveAnewarrays[liveIdx] = NULL;
+                }
+            }
+        }
+
     return node;
 }
 
@@ -4168,32 +4207,57 @@ static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *no
 {
     uint32_t gIdx = (uint32_t)vp->getValueNumber(node);
     logprintf(vp->trace(), vp->comp()->log(),
-                                        "VP ARRAY FORWARD: removing entries for node n%dn with vn=%d\n", node->getGlobalIndex(), vp->getValueNumber(node));
+        "VP ARRAY FORWARD: removing entries for node n%dn with vn=%d\n",
+        node->getGlobalIndex(), vp->getValueNumber(node));
     TR::list<uint64_t, TR::Region &> toRemove(vp->comp()->trMemory()->currentStackRegion());
     {
         auto fwdCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(vp->_arrayShadowForwardingMap);
         for (fwdCursor.SetToFirst(); fwdCursor.Valid(); fwdCursor.SetToNext())
-        {
+            {
             uint64_t k = vp->_arrayShadowForwardingMap.KeyAt(fwdCursor);
             logprintf(vp->trace(), vp->comp()->log(),
-                    "VP ARRAY FORWARD: entry has key %llu\n", k);
-            if ((k >> 32) == gIdx) {
+                "VP ARRAY FORWARD: entry has key %llu\n", k);
+            if ((k >> 32) == gIdx)
+                {
                 logprintf(vp->trace(), vp->comp()->log(),
                     "VP ARRAY FORWARD: removing key %llu\n", k);
                 toRemove.push_back(k);
+                }
             }
-        }
     }
     for (auto k : toRemove)
-    {
+        {
         CS2::HashIndex fwdIdx;
+        TR::Node *cancelledValue = NULL;
         if (vp->_arrayShadowForwardingMap.Locate(k, fwdIdx))
+            {
+            cancelledValue = vp->_arrayShadowForwardingMap[fwdIdx];
             vp->_arrayShadowForwardingMap[fwdIdx] = NULL;
+            }
 
         CS2::HashIndex storeIdx;
         if (vp->_arrayShadowStoreTTMap.Locate(k, storeIdx))
             vp->_arrayShadowStoreTTMap[storeIdx] = NULL;
-    }
+
+        // Cancel any pending deferred morph whose storedValue came from this
+        // slot.  Null the load pointer as a sentinel so doDelayedTransformations
+        // skips it.
+        if (cancelledValue != NULL)
+            {
+            ListIterator<TR_Pair<TR::Node, TR::Node>> morphIt(&vp->_pendingAlloadiMorphs);
+            for (TR_Pair<TR::Node, TR::Node> *p = morphIt.getFirst(); p; p = morphIt.getNext())
+                {
+                if (p->getKey() != NULL && p->getValue() == cancelledValue)
+                    {
+                    if (vp->trace())
+                        logprintf(vp->trace(), vp->comp()->log(),
+                            "VP ARRAY FORWARD:   cancelling pending morph of aloadi n%dn (escape detected)\n",
+                            p->getKey()->getGlobalIndex());
+                    p->setKey(NULL);
+                    }
+                }
+            }
+        }
 }
 
 TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)

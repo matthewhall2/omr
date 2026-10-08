@@ -2029,7 +2029,20 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                                 logprintf(vp->trace(), vp->comp()->log(),
                                     "VP ARRAY FORWARD:   queuing forwarded store treetop n%dn for removal\n",
                                     storeTT->getNode()->getGlobalIndex());
-                            vp->_forwardedStoreTreesToRemove.add(storeTT);
+                            {
+                            uint32_t arrayVN = (uint32_t)(key >> 32);
+                            CS2::HashIndex fwdListIdx;
+                            TR_ScratchList<TR::TreeTop> *fwdList = NULL;
+                            if (vp->_forwardedStoreTreesToRemove.Locate(arrayVN, fwdListIdx))
+                                {
+                                fwdList = vp->_forwardedStoreTreesToRemove[fwdListIdx];
+                                }
+                            else
+                                {
+                                fwdList = new (vp->trHeapMemory()) TR_ScratchList<TR::TreeTop>(vp->trMemory());
+                                vp->_forwardedStoreTreesToRemove.Add(arrayVN, fwdList);
+                                }
+                            fwdList->add(storeTT);
                             vp->_arrayShadowStoreTTMap[storeTTIdx] = NULL;
 
                             // Check the immediately following treetop for the
@@ -2053,12 +2066,13 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                                             logprintf(vp->trace(), vp->comp()->log(),
                                                 "VP ARRAY FORWARD:   queuing compressedRefs anchor n%dn for removal\n",
                                                 nextNode->getGlobalIndex());
-                                        vp->_forwardedStoreTreesToRemove.add(nextTT);
+                                        fwdList->add(nextTT);
                                         }
                                     }
                                 }
-                            }
-                        }
+                            }   // arrayVN scope
+                        }       // if (storeTT != NULL)
+                        }       // if (Locate(key, storeTTIdx))
 
                     // Always defer the aloadi → storedValue substitution to
                     // doDelayedTransformations.  This keeps escape-detection
@@ -4239,6 +4253,16 @@ static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *no
         if (vp->_arrayShadowStoreTTMap.Locate(k, storeIdx))
             vp->_arrayShadowStoreTTMap[storeIdx] = NULL;
 
+        // Cancel any treetops already queued for deferred removal for this array VN.
+        // This prevents doDelayedTransformations from removing stores whose forwarded
+        // loads were cancelled by escape detection.
+        {
+        uint32_t arrayVN = (uint32_t)(k >> 32);
+        CS2::HashIndex fwdListIdx;
+        if (vp->_forwardedStoreTreesToRemove.Locate(arrayVN, fwdListIdx))
+            vp->_forwardedStoreTreesToRemove[fwdListIdx] = NULL;
+        }
+
         // Cancel any pending deferred morph whose storedValue came from this
         // slot.  Null the load pointer as a sentinel so doDelayedTransformations
         // skips it.
@@ -4308,6 +4332,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                 if (!vp->_liveAnewarrays.Locate(arrayVN, liveIdx))
                     {
                     vp->_liveAnewarrays.Add(arrayVN, node);
+                    vp->_forwardedAnewArrayTTs.Add(arrayVN, vp->_curTree);
                     if (vp->trace())
                         logprintf(vp->trace(), vp->comp()->log(),
                             "VP ARRAY FORWARD: registered anewarray n%dn VN=%d for forwarding\n",
@@ -5190,17 +5215,17 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
 {
     OMR::Logger *log = vp->comp()->log();
     constrainChildren(vp, node);
-
     // Array store-spread eliminiation - array escapes through call
     // if this is a normal call, we abort and try again the next GVP pass (in case the call was inlined)
+    static bool checkGuardForEscape = feGetEnv("doNotCheckGuardForEscape") == NULL;
+    static const bool vpArrayForwardDebug = feGetEnv("TR_vpArrayForwardDebug") != NULL;
     if (vp->_isGlobalPropagation
-        && !vp->_liveAnewarrays.IsEmpty()
-        && !vp->_curBlock->isOSRCodeBlock()
-        && !vp->_curBlock->isOSRCatchBlock()
-        && !vp->_curBlock->isOSRInduceBlock()
+         && !vp->_liveAnewarrays.IsEmpty()
+         && !vp->_curBlock->isOSRCodeBlock()
+         && !vp->_curBlock->isOSRCatchBlock()
+         && !vp->_curBlock->isOSRInduceBlock()
         && !isGuardFailureBlock(vp->_curBlock, vp->comp()))
         {
-        static const bool vpArrayForwardDebug = feGetEnv("TR_vpArrayForwardDebug") != NULL;
         static bool disableEscapeAnalysisInStoreSpreadElimination = feGetEnv("TR_disableEscapeAnalysisInStoreSpreadEliminiation") != NULL;
         if (!disableEscapeAnalysisInStoreSpreadElimination)
             {
@@ -5229,6 +5254,12 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
                     }
                 }
             }
+        } else if (vp->_curBlock->isOSRCodeBlock() || vp->_curBlock->isOSRCatchBlock() || vp->_curBlock->isOSRInduceBlock()) {
+if (vpArrayForwardDebug)
+                        {
+                        fprintf(stderr, "VP ARRAY FORWARD: escaped in osr block - not invalidating\n");
+                        fflush(stderr);
+                        }
         }
 
     if (vp->lastTimeThrough() && vp->_isGlobalPropagation) {

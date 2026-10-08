@@ -6617,10 +6617,70 @@ void OMR::ValuePropagation::doDelayedTransformations()
 {
     OMR::Logger *log = comp()->log();
 
+    // Remove awrtbari treetops whose values were fully forwarded to all
+    // consuming aloadi nodes.  Done here (after the use-def assertion check
+    // in GVP::perform) so that prepareForNodeRemoval cannot fire
+    // setUseDefInfo(NULL) and trip that assertion.
+    // _forwardedStoreTreesToRemove is keyed by array VN; a NULL list pointer
+    // means the entire bucket was cancelled by escape detection.
+    // After removing all stores for a given array VN, also remove the anewarray
+    // treetop itself (its reference count will be zero once its stores are gone
+    // and no other use survived) and null the _liveAnewarrays entry so the
+    // general pass below does not re-process it.
+    {
+    auto fwdCursor = CS2::HashTable<uint32_t, TR_ScratchList<TR::TreeTop> *, TR::Allocator>::Cursor(_forwardedStoreTreesToRemove);
+    for (fwdCursor.SetToFirst(); fwdCursor.Valid(); fwdCursor.SetToNext())
+        {
+        TR_ScratchList<TR::TreeTop> *fwdList = _forwardedStoreTreesToRemove.DataAt(fwdCursor);
+        if (fwdList == NULL)
+            continue;
+        ListIterator<TR::TreeTop> fwdIt(fwdList);
+        for (TR::TreeTop *storeTT = fwdIt.getFirst(); storeTT; storeTT = fwdIt.getNext())
+            {
+            if (trace())
+                logprintf(trace(), log,
+                    "VP ARRAY FORWARD:   (delayed) removing forwarded store treetop n%dn\n",
+                    storeTT->getNode() ? storeTT->getNode()->getGlobalIndex() : -1);
+            removeNode(storeTT->getNode(), false);
+            TR::TransformUtil::removeTree(comp(), storeTT);
+            }
+
+        // All stores for this array were forwarded; physically remove the anewarray
+        // treetop using the pointer captured at registration time.
+        int32_t arrayVN = (int32_t)_forwardedStoreTreesToRemove.KeyAt(fwdCursor);
+        CS2::HashIndex arrIdx;
+        if (_forwardedAnewArrayTTs.Locate(arrayVN, arrIdx))
+            {
+            TR::TreeTop *arrTT = _forwardedAnewArrayTTs[arrIdx];
+            if (arrTT != NULL)
+                {
+                TR::Node *wrapperNode = arrTT->getNode();
+                TR::Node *arrNode = (wrapperNode->getNumChildren() > 0)
+                    ? wrapperNode->getFirstChild() : wrapperNode;
+                if (trace())
+                    logprintf(trace(), log,
+                        "VP ARRAY FORWARD:   (delayed) removing anewarray treetop n%dn (rc=%d)\n",
+                        arrNode->getGlobalIndex(), arrNode->getReferenceCount());
+                TR::TransformUtil::removeTree(comp(), arrTT);
+                }
+            }
+
+        // Null the _liveAnewarrays entry so the pass below skips this VN.
+        CS2::HashIndex liveIdx;
+        if (_liveAnewarrays.Locate(arrayVN, liveIdx))
+            _liveAnewarrays[liveIdx] = NULL;
+        }
+    _forwardedStoreTreesToRemove.MakeEmpty();
+    _forwardedAnewArrayTTs.MakeEmpty();
+    }
+    _arrayShadowForwardingMap.MakeEmpty();
+    _arrayShadowStoreTTMap.MakeEmpty();
+
     // For each anewarray that survived the GVP walk without escaping on any
     // warm path, set allocationCanBeRemoved now that we know it is safe.
     // Deferred from constrainANewArray so that escapes detected in later blocks
     // (constrainCall / constrainReturn / constrainWrtBar) can clear the entry.
+    // Entries consumed by the store-removal pass above are already NULL.
     {
     auto liveCursor = CS2::HashTable<int32_t, TR::Node *, TR::Allocator>::Cursor(_liveAnewarrays);
     for (liveCursor.SetToFirst(); liveCursor.Valid(); liveCursor.SetToNext())
@@ -6637,26 +6697,6 @@ void OMR::ValuePropagation::doDelayedTransformations()
         }
     _liveAnewarrays.MakeEmpty();
     }
-
-    // Remove awrtbari treetops whose values were fully forwarded to all
-    // consuming aloadi nodes.  Done here (after the use-def assertion check
-    // in GVP::perform) so that prepareForNodeRemoval cannot fire
-    // setUseDefInfo(NULL) and trip that assertion.
-    {
-    ListIterator<TR::TreeTop> fwdIt(&_forwardedStoreTreesToRemove);
-    for (TR::TreeTop *storeTT = fwdIt.getFirst(); storeTT; storeTT = fwdIt.getNext())
-        {
-        if (trace())
-            logprintf(trace(), log,
-                "VP ARRAY FORWARD:   (delayed) removing forwarded store treetop n%dn\n",
-                storeTT->getNode() ? storeTT->getNode()->getGlobalIndex() : -1);
-        removeNode(storeTT->getNode(), false);
-        TR::TransformUtil::removeTree(comp(), storeTT);
-        }
-    _forwardedStoreTreesToRemove.init();
-    }
-    _arrayShadowForwardingMap.MakeEmpty();
-    _arrayShadowStoreTTMap.MakeEmpty();
 
     // Execute deferred in-place morphs for shared (rc > 1) aloadi nodes that
     // were forwarded to a known stored value during the GVP walk.  Done here

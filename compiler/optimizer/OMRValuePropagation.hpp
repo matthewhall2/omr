@@ -987,6 +987,11 @@ public:
     // Populated by constrainANewArray during GVP; cleared in doDelayedTransformations.
     CS2::HashTable<int32_t, TR::Node *, TR::Allocator> _liveAnewarrays;
 
+    // Parallel map from the same VN key to the TR::TreeTop * of the anewarray.
+    // Used in doDelayedTransformations to physically remove the allocation when
+    // all of its stores were forwarded and removed.
+    CS2::HashTable<int32_t, TR::TreeTop *, TR::Allocator> _forwardedAnewArrayTTs;
+
     // Map from (anewarray_VN << 32 | constant_offset) to the post-constrained
     // valueChild node of the awrtbari that wrote that slot.  The value node is
     // always a leaf (getNumChildren() == 0) — non-leaf values are not recorded.
@@ -1001,7 +1006,10 @@ public:
 
     // Forwarded awrtbari treetops to remove in doDelayedTransformations, after
     // the use-def assertion check in GVP::perform() has already passed.
-    TR_ScratchList<TR::TreeTop> _forwardedStoreTreesToRemove;
+    // Keyed by the array VN (the upper 32 bits of the _arrayShadowStoreTTMap key)
+    // so that removeArrayForwardingEntries can cancel all queued removals for a
+    // specific array when escape is detected, without a flat-list scan.
+    CS2::HashTable<uint32_t, TR_ScratchList<TR::TreeTop> *, TR::Allocator> _forwardedStoreTreesToRemove;
 
     // Pending in-place aloadi→aload morphs for shared (rc > 1) nodes.
     // Queued during the GVP walk; executed in doDelayedTransformations after

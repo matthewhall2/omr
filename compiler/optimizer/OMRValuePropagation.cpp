@@ -6607,17 +6607,6 @@ void OMR::ValuePropagation::doDelayedTransformations()
 {
     OMR::Logger *log = comp()->log();
 
-    // Remove awrtbari treetops whose values were fully forwarded to all
-    // consuming aloadi nodes.  Done here (after the use-def assertion check
-    // in GVP::perform) so that prepareForNodeRemoval cannot fire
-    // setUseDefInfo(NULL) and trip that assertion.
-    // _forwardedStoreTreesToRemove is keyed by array VN; a NULL list pointer
-    // means the entire bucket was cancelled by escape detection.
-    // After removing all stores for a given array VN, also remove the anewarray
-    // treetop itself (its reference count will be zero once its stores are gone
-    // and no other use survived) and null the _liveAnewarrays entry so the
-    // general pass below does not re-process it.
-    {
     auto fwdCursor = CS2::HashTable<uint32_t, TR_ScratchList<TR::TreeTop> *, TR::Allocator>::Cursor(_forwardedStoreTreesToRemove);
     for (fwdCursor.SetToFirst(); fwdCursor.Valid(); fwdCursor.SetToNext())
         {
@@ -6662,7 +6651,7 @@ void OMR::ValuePropagation::doDelayedTransformations()
         }
     _forwardedStoreTreesToRemove.MakeEmpty();
     _forwardedAnewArrayTTs.MakeEmpty();
-    }
+
     _arrayShadowForwardingMap.MakeEmpty();
     _arrayShadowStoreTTMap.MakeEmpty();
 
@@ -6671,7 +6660,6 @@ void OMR::ValuePropagation::doDelayedTransformations()
     // Deferred from constrainANewArray so that escapes detected in later blocks
     // (constrainCall / constrainReturn / constrainWrtBar) can clear the entry.
     // Entries consumed by the store-removal pass above are already NULL.
-    {
     auto liveCursor = CS2::HashTable<int32_t, TR::Node *, TR::Allocator>::Cursor(_liveAnewarrays);
     for (liveCursor.SetToFirst(); liveCursor.Valid(); liveCursor.SetToNext())
         {
@@ -6686,14 +6674,12 @@ void OMR::ValuePropagation::doDelayedTransformations()
             }
         }
     _liveAnewarrays.MakeEmpty();
-    }
 
     // Execute deferred in-place morphs for shared (rc > 1) aloadi nodes that
     // were forwarded to a known stored value during the GVP walk.  Done here
     // (after _inGVPWalk is cleared and the use-def assertion in GVP::perform
     // has passed) so that removeChildren cannot call setUseDefInfo(NULL) while
     // GVP's cached use-def pointer is still live.
-    {
     ListIterator<TR_Pair<TR::Node, TR::Node>> morphIt(&_pendingAlloadiMorphs);
     for (TR_Pair<TR::Node, TR::Node> *p = morphIt.getFirst(); p; p = morphIt.getNext())
         {
@@ -6717,7 +6703,6 @@ void OMR::ValuePropagation::doDelayedTransformations()
                 storedValue->getOpCode().getName());
         }
     _pendingAlloadiMorphs.init();
-    }
 
     ListIterator<TR_TreeTopNodePair> treesIt1(&_scalarizedArrayCopies);
     TR_TreeTopNodePair *scalarizedArrayCopy;

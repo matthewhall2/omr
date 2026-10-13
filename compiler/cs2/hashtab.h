@@ -905,7 +905,7 @@ CS2_HT_TEMP bool inline CS2_HT_DECL::Locate(const AKeyType &key, HashIndex &hash
     if (!fTable[hashIndex].Valid())
         return false;
 
-    while (!fTable[hashIndex].Valid() || (fTable[hashIndex].HashCode() != hashValue) || !AHashInfo::Equal(key, fTable[hashIndex].Key())) {
+    while ((fTable[hashIndex].HashCode() != hashValue) || !AHashInfo::Equal(key, fTable[hashIndex].Key())) {
         // Set index to next entry in the collision chain or, if empty, end search.
         if (fTable[hashIndex].CollisionChain() != 0) {
             HashIndex hi2 = fTable[hashIndex].CollisionChain();
@@ -977,8 +977,6 @@ CS2_HT_TEMP void inline CS2_HT_DECL::Remove(HashIndex hashIndex)
     // follow it to unlink this entry from the chain.  Then return the rehash area
     // space to the free pool.
 
-    HashIndex freedIndex = hashIndex;
-
     if (hashIndex > (fMask + 1)) {
         HashIndex headOfChain = (fTable[hashIndex].HashCode() & fMask) + 1;
         HashIndex collisionIndex;
@@ -989,8 +987,8 @@ CS2_HT_TEMP void inline CS2_HT_DECL::Remove(HashIndex hashIndex)
         }
 
         fTable[collisionIndex].SetCollisionChain(fTable[hashIndex].CollisionChain());
-        fTable[hashIndex].~HashTableEntry();
         fTable[hashIndex].SetCollisionChain(fNextFree);
+        fTable[hashIndex].~HashTableEntry();
 
         fNextFree = hashIndex;
     } else {
@@ -1004,21 +1002,20 @@ CS2_HT_TEMP void inline CS2_HT_DECL::Remove(HashIndex hashIndex)
             HashIndex firstCollision = collisionChain;
 
             fTable[hashIndex] = fTable[firstCollision];
-            fTable[firstCollision].~HashTableEntry();
             fTable[firstCollision].SetCollisionChain(fNextFree);
+            fTable[firstCollision].Invalidate();
             fNextFree = firstCollision;
-            freedIndex = firstCollision;
-        } else {
-            fTable[hashIndex].SetCollisionChain(0);
+            if (firstCollision > hashIndex)
+                hashIndex = firstCollision;
         }
     }
 
     // If we are deleting the highest allocated index, then walk backward to
     // determine the next highest index
-    if (freedIndex == fHighestIndex) {
+    if (hashIndex == fHighestIndex) {
         HashIndex maxIndex;
 
-        for (maxIndex = freedIndex - 1; maxIndex > 0; --maxIndex) {
+        for (maxIndex = hashIndex - 1; maxIndex > 0; --maxIndex) {
             if (fTable[maxIndex].Valid())
                 break;
         }

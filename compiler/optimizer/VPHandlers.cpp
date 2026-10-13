@@ -5254,12 +5254,78 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
                     }
                 }
             }
-        } else if (vp->_curBlock->isOSRCodeBlock() || vp->_curBlock->isOSRCatchBlock() || vp->_curBlock->isOSRInduceBlock()) {
-if (vpArrayForwardDebug)
+        }
+    else if (vp->_isGlobalPropagation
+        && !vp->_liveAnewarrays.IsEmpty()
+        && (isGuardFailureBlock(vp->_curBlock, vp->comp())
+            || vp->_curBlock->isOSRCodeBlock()
+            || vp->_curBlock->isOSRCatchBlock()
+            || vp->_curBlock->isOSRInduceBlock()))
+        {
+        // The call is in a cold (guard-failure or OSR) block. Rather than
+        // invalidating the warm-block anewarray, create a fresh independent
+        // anewarray in this cold block and redirect the call arg to it.
+        // That drops the warm-block anewarray's reference count by one,
+        // allowing doDelayedTransformations to remove it once all stores
+        // have been forwarded.
+        static bool disableEscapeAnalysisInStoreSpreadElimination = feGetEnv("TR_disableEscapeAnalysisInStoreSpreadEliminiation") != NULL;
+        if (!disableEscapeAnalysisInStoreSpreadElimination)
+            {
+            int32_t firstArgIndex = node->getFirstArgumentIndex();
+            for (int32_t i = firstArgIndex; i < node->getNumChildren(); ++i)
+                {
+                int32_t argVN = vp->getValueNumber(node->getChild(i));
+                CS2::HashIndex liveIdx;
+                if (vp->_liveAnewarrays.Locate(argVN, liveIdx)
+                    && vp->_liveAnewarrays[liveIdx] != NULL)
+                    {
+                    TR::Node *arrNode = vp->_liveAnewarrays[liveIdx];
+                    if (vpArrayForwardDebug)
                         {
-                        fprintf(stderr, "VP ARRAY FORWARD: escaped in osr block - not invalidating\n");
+                        fprintf(stderr,
+                            "VP ARRAY FORWARD:   anewarray n%dn escapes via call arg %d of n%dn in cold/OSR block"
+                            " in method [%s] — cloning fresh anewarray\n",
+                            arrNode->getGlobalIndex(), i, node->getGlobalIndex(),
+                            vp->comp()->signature());
                         fflush(stderr);
                         }
+                    if (vp->trace())
+                        logprintf(vp->trace(), vp->comp()->log(),
+                            "VP ARRAY FORWARD:   anewarray n%dn escapes via call arg %d of n%dn in cold/OSR block"
+                            " — cloning fresh anewarray\n",
+                            arrNode->getGlobalIndex(), i, node->getGlobalIndex());
+
+                    // Build a fully independent anewarray for the cold block.
+                    // Size: fresh iconst with the same constant value as the original.
+                    // Type: fresh copy of the original's loadaddr child.
+                    TR::Node *origSize = arrNode->getFirstChild();
+                    TR::Node *origType = arrNode->getSecondChild();
+                    TR::Node *newSize  = TR::Node::create(arrNode, TR::iconst, 0, origSize->getInt());
+                    TR::Node *newType  = TR::Node::copy(origType);
+                    TR::SymbolReference *symRef
+                        = vp->comp()->getSymRefTab()->findOrCreateANewArraySymbolRef(
+                            origType->getSymbolReference()->getOwningMethodSymbol(vp->comp()));
+                    TR::Node *newArr = TR::Node::createWithSymRef(arrNode, TR::anewarray, 2, symRef);
+                    newArr->setAndIncChild(0, newSize);
+                    newArr->setAndIncChild(1, newType);
+
+                    // Insert the new allocation as a treetop immediately before the call.
+                    TR::TreeTop *newArrTT = OMR::TreeTop::create(
+                        vp->comp(), TR::Node::create(TR::treetop, 1, newArr));
+                    vp->_curTree->insertBefore(newArrTT);
+
+                    // Redirect the call arg from the warm-block anewarray to the new one.
+                    node->getChild(i)->decReferenceCount();
+                    if (vp->trace())
+                        logprintf(vp->trace(), vp->comp()->log(),
+                            "VP ARRAY FORWARD:   anewarray n%dn rc after cold-block decrement = %d,"
+                            " new cold-block anewarray is n%dn\n",
+                            arrNode->getGlobalIndex(), arrNode->getReferenceCount(),
+                            newArr->getGlobalIndex());
+                    node->setAndIncChild(i, newArr);
+                    }
+                }
+            }
         }
 
     if (vp->lastTimeThrough() && vp->_isGlobalPropagation) {

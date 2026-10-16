@@ -6618,10 +6618,25 @@ void OMR::ValuePropagation::doDelayedTransformations()
         ListIterator<ColdArrayRebuild> rebuildIt(&_coldArrayRebuilds);
         for (ColdArrayRebuild *rebuild = rebuildIt.getFirst(); rebuild; rebuild = rebuildIt.getNext())
             {
-            // _anewarrayTT is nulled when the original warm-block array was later
-            // found to escape; skip these cancelled rebuilds.
-            if (rebuild->_anewarrayTT == NULL)
+            // Only emit stores if the original warm-block array survived without
+            // escaping.  _liveAnewarrays[_origArrayVN] is nulled by escape detection
+            // in constrainCall/constrainReturn/constrainWrtBar; if it is NULL here
+            // the warm array escaped and the cold clone should not be filled.
+            {
+            CS2::HashIndex liveIdx;
+            if (!_liveAnewarrays.Locate((int32_t)rebuild->_origArrayVN, liveIdx)
+                || _liveAnewarrays[liveIdx] == NULL)
+                {
+                if (trace())
+                    logprintf(trace(), log,
+                        "VP ARRAY FORWARD:   skipping cold-block rebuild for n%dn: orig VN=%u escaped\n",
+                        rebuild->_anewarrayTT->getNode()->getFirstChild()->getGlobalIndex(),
+                        rebuild->_origArrayVN);
                 continue;
+                }
+            }
+            // Insert the anewarray treetop now that we know the warm array survived.
+            rebuild->_insertBeforeTT->insertBefore(rebuild->_anewarrayTT);
             TR::TreeTop *insertAfter = rebuild->_anewarrayTT;
             TR::Node *newArr = insertAfter->getNode()->getFirstChild();
             ListIterator<ForwardedSlot> slotIt(&rebuild->_slots);

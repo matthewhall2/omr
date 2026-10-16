@@ -6610,46 +6610,52 @@ void OMR::ValuePropagation::doDelayedTransformations()
     // Fill each cold-block anewarray with the values stored into the original
     // array.  Must run before the store-removal loop below so that the snapshotted
     // value nodes are still intact when they are copied.
-    {
-    const bool is64 = comp()->target().is64Bit();
-    TR::SymbolReference *shadowSymRef = comp()->getSymRefTab()->findOrCreateArrayShadowSymbolRef(TR::Address);
-    ListIterator<ColdArrayRebuild> rebuildIt(&_coldArrayRebuilds);
-    for (ColdArrayRebuild *rebuild = rebuildIt.getFirst(); rebuild; rebuild = rebuildIt.getNext())
+    if (!_coldArrayRebuilds.isEmpty())
         {
-        TR::TreeTop *insertAfter = rebuild->_anewarrayTT;
-        TR::Node *newArr = insertAfter->getNode()->getFirstChild();
-        ListIterator<ForwardedSlot> slotIt(&rebuild->_slots);
-        for (ForwardedSlot *slot = slotIt.getFirst(); slot; slot = slotIt.getNext())
+        const bool is64 = comp()->target().is64Bit();
+        TR::SymbolReference *shadowSymRef = comp()->getSymRefTab()->findOrCreateArrayShadowSymbolRef(TR::Address);
+        bool anyInserted = false;
+        ListIterator<ColdArrayRebuild> rebuildIt(&_coldArrayRebuilds);
+        for (ColdArrayRebuild *rebuild = rebuildIt.getFirst(); rebuild; rebuild = rebuildIt.getNext())
             {
-            TR::Node *offsetNode = is64
-                ? TR::Node::lconst(newArr, slot->_offset)
-                : TR::Node::iconst(newArr, (int32_t)slot->_offset);
-            TR::Node *addrNode = TR::Node::create(newArr, is64 ? TR::aladd : TR::aiadd, 2, newArr, offsetNode);
-            TR::Node *valueNode = TR::Node::copy(slot->_value);
-            TR::Node *storeNode = TR::Node::createWithSymRef(
-                TR::awrtbari, 3, 3, addrNode, valueNode, newArr, shadowSymRef);
-
-            TR::TreeTop *storeTT = TR::TreeTop::create(comp(), storeNode);
-            insertAfter->insertAfter(storeTT);
-            insertAfter = storeTT;
-
-            if (comp()->useCompressedPointers())
+            TR::TreeTop *insertAfter = rebuild->_anewarrayTT;
+            TR::Node *newArr = insertAfter->getNode()->getFirstChild();
+            ListIterator<ForwardedSlot> slotIt(&rebuild->_slots);
+            for (ForwardedSlot *slot = slotIt.getFirst(); slot; slot = slotIt.getNext())
                 {
-                TR::TreeTop *anchorTT = TR::TreeTop::create(comp(), TR::Node::createCompressedRefsAnchor(storeNode));
-                insertAfter->insertAfter(anchorTT);
-                insertAfter = anchorTT;
-                }
+                TR::Node *offsetNode = is64
+                    ? TR::Node::lconst(newArr, slot->_offset)
+                    : TR::Node::iconst(newArr, (int32_t)slot->_offset);
+                TR::Node *addrNode = TR::Node::create(newArr, is64 ? TR::aladd : TR::aiadd, 2, newArr, offsetNode);
+                TR::Node *valueNode = TR::Node::copy(slot->_value);
+                TR::Node *storeNode = TR::Node::createWithSymRef(
+                    TR::awrtbari, 3, 3, addrNode, valueNode, newArr, shadowSymRef);
 
-            if (trace())
-                logprintf(trace(), log,
-                    "VP ARRAY FORWARD:   (delayed) cold-block store n%dn at offset %lld into new anewarray n%dn\n",
-                    storeNode->getGlobalIndex(), (long long)slot->_offset, newArr->getGlobalIndex());
+                TR::TreeTop *storeTT = TR::TreeTop::create(comp(), storeNode);
+                insertAfter->insertAfter(storeTT);
+                insertAfter = storeTT;
+                anyInserted = true;
+
+                if (comp()->useCompressedPointers())
+                    {
+                    TR::TreeTop *anchorTT = TR::TreeTop::create(comp(), TR::Node::createCompressedRefsAnchor(storeNode));
+                    insertAfter->insertAfter(anchorTT);
+                    insertAfter = anchorTT;
+                    }
+
+                if (trace())
+                    logprintf(trace(), log,
+                        "VP ARRAY FORWARD:   (delayed) cold-block store n%dn at offset %lld into new anewarray n%dn\n",
+                        storeNode->getGlobalIndex(), (long long)slot->_offset, newArr->getGlobalIndex());
+                }
+            }
+        _coldArrayRebuilds.init();
+        if (anyInserted)
+            {
+            invalidateUseDefInfo();
+            invalidateValueNumberInfo();
             }
         }
-    _coldArrayRebuilds.init();
-    invalidateUseDefInfo();
-    invalidateValueNumberInfo();
-    }
 
     auto fwdCursor = CS2::HashTable<uint32_t, TR_ScratchList<TR::TreeTop> *, TR::Allocator>::Cursor(_forwardedStoreTreesToRemove);
     for (fwdCursor.SetToFirst(); fwdCursor.Valid(); fwdCursor.SetToNext())

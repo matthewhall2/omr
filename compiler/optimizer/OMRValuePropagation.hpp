@@ -1019,51 +1019,6 @@ public:
     // opcode/symref to adopt.
     TR_ScratchList<TR_Pair<TR::Node, TR::Node>> _pendingAlloadiMorphs;
 
-    // One forwarded array slot: constant offset and the (leaf) value that was
-    // stored there in the warm path.
-    struct ForwardedSlot {
-        TR_ALLOC(TR_Memory::ValuePropagation)
-
-        ForwardedSlot(int64_t offset, TR::Node *value)
-            : _offset(offset)
-            , _value(value)
-        {}
-
-        int64_t _offset;
-        TR::Node *_value;
-    };
-
-    // A fresh anewarray created in a cold (guard-failure / OSR) block because the
-    // original array escapes through a call there.  _slots is a snapshot, taken at
-    // the call, of every forwarded slot of the original array.  In
-    // doDelayedTransformations, if the original warm array survived (i.e. was not
-    // later invalidated), _anewarrayTT is inserted before _insertBeforeTT and then
-    // an awrtbari (plus compressedRefs anchor if needed) is created for each slot
-    // and inserted after _anewarrayTT.  If the warm array was invalidated the
-    // entire rebuild is skipped (no treetop insertion, no stores).
-    // The anewarray node is _anewarrayTT->getNode()->getFirstChild() (the treetop
-    // wrapper's child).
-    struct ColdArrayRebuild {
-        TR_ALLOC(TR_Memory::ValuePropagation)
-
-        ColdArrayRebuild(TR::TreeTop *anewarrayTT, TR::TreeTop *insertBeforeTT,
-                         uint32_t origArrayVN, TR_Memory *m)
-            : _anewarrayTT(anewarrayTT)
-            , _insertBeforeTT(insertBeforeTT)
-            , _origArrayVN(origArrayVN)
-            , _slots(m)
-        {}
-
-        TR::TreeTop *_anewarrayTT;       // the treetop to insert (deferred)
-        TR::TreeTop *_insertBeforeTT;    // insert _anewarrayTT before this tree
-        uint32_t     _origArrayVN;       // VN of the warm-block anewarray this was cloned from
-        TR_ScratchList<ForwardedSlot> _slots;
-    };
-
-    // Populated by constrainCall (cold-block clone); consumed/cleared in
-    // doDelayedTransformations.
-    TR_ScratchList<ColdArrayRebuild> _coldArrayRebuilds;
-
     // Flags
     //
     bool lastTimeThrough() { return _lastTimeThrough; }

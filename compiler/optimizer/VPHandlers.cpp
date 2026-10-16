@@ -4329,22 +4329,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                 // add array to list. other handlers will check for the array by VN.
                 int32_t arrayVN = vp->getValueNumber(node);
                 CS2::HashIndex liveIdx;
-                // Do not track arrays allocated in cold (guard-failure / OSR) blocks.
-                // constrainCall creates such arrays as fresh clones for escaping calls;
-                // tracking them would make the next GVP pass clone them again.  Do not
-                // fall into the else below either: these arrays escape, so
-                // allocationCanBeRemoved must stay unset.
-                if (isGuardFailureBlock(vp->_curBlock, vp->comp())
-                    || vp->_curBlock->isOSRCodeBlock()
-                    || vp->_curBlock->isOSRCatchBlock()
-                    || vp->_curBlock->isOSRInduceBlock())
-                    {
-                    if (vp->trace())
-                        logprintf(vp->trace(), vp->comp()->log(),
-                            "VP ARRAY FORWARD: not tracking anewarray n%dn in cold/OSR block\n",
-                            node->getGlobalIndex());
-                    }
-                else if (!vp->_liveAnewarrays.Locate(arrayVN, liveIdx))
+                if (!vp->_liveAnewarrays.Locate(arrayVN, liveIdx))
                     {
                     vp->_liveAnewarrays.Add(arrayVN, node);
                     vp->_forwardedAnewArrayTTs.Add(arrayVN, vp->_curTree);
@@ -5324,34 +5309,10 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
                     newArr->setAndIncChild(0, newSize);
                     newArr->setAndIncChild(1, newType);
 
-                    // Build the anewarray treetop but do NOT insert it yet.
-                    // doDelayedTransformations will insert it (before _insertBeforeTT)
-                    // only if the original warm array survived without escaping.
+                    // Insert the new allocation as a treetop immediately before the call.
                     TR::TreeTop *newArrTT = OMR::TreeTop::create(
                         vp->comp(), TR::Node::create(TR::treetop, 1, newArr));
-
-                    // Snapshot the forwarded slots of the original array now; the stores
-                    // that fill the new array are created in doDelayedTransformations.
-                    // A snapshot is needed because later escape detection on the warm
-                    // array nulls the forwarding map entries, but this clone must still
-                    // hold the stored values.
-                    uint32_t origArrayVN = (uint32_t)argVN;
-                    OMR::ValuePropagation::ColdArrayRebuild *rebuild
-                        = new (vp->trHeapMemory()) OMR::ValuePropagation::ColdArrayRebuild(
-                            newArrTT, vp->_curTree, origArrayVN, vp->trMemory());
-                    auto slotCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(
-                        vp->_arrayShadowForwardingMap);
-                    for (slotCursor.SetToFirst(); slotCursor.Valid(); slotCursor.SetToNext())
-                        {
-                        uint64_t slotKey = vp->_arrayShadowForwardingMap.KeyAt(slotCursor);
-                        TR::Node *slotValue = vp->_arrayShadowForwardingMap[slotCursor];
-                        if ((slotKey >> 32) != origArrayVN || slotValue == NULL)
-                            continue;
-                        int64_t slotOffset = (int64_t)(int32_t)(uint32_t)(slotKey & 0xffffffffu);
-                        rebuild->_slots.add(new (vp->trHeapMemory()) OMR::ValuePropagation::ForwardedSlot(
-                            slotOffset, slotValue));
-                        }
-                    vp->_coldArrayRebuilds.add(rebuild);
+                    vp->_curTree->insertBefore(newArrTT);
 
                     // Redirect the call arg from the warm-block anewarray to the new one.
                     node->getChild(i)->decReferenceCount();

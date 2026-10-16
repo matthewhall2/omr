@@ -148,7 +148,6 @@ OMR::ValuePropagation::ValuePropagation(TR::OptimizationManager *manager)
     , _arrayShadowStoreTTMap(comp()->allocator())
     , _forwardedStoreTreesToRemove(comp()->allocator())
     , _pendingAlloadiMorphs(trMemory())
-    , _coldArrayRebuilds(trMemory())
 {
     // DANGER !!!
     // Virtual methods on ValuePropagation should only be called when the most derived class of VP's

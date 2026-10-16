@@ -6618,6 +6618,10 @@ void OMR::ValuePropagation::doDelayedTransformations()
         ListIterator<ColdArrayRebuild> rebuildIt(&_coldArrayRebuilds);
         for (ColdArrayRebuild *rebuild = rebuildIt.getFirst(); rebuild; rebuild = rebuildIt.getNext())
             {
+            // _anewarrayTT is nulled when the original warm-block array was later
+            // found to escape; skip these cancelled rebuilds.
+            if (rebuild->_anewarrayTT == NULL)
+                continue;
             TR::TreeTop *insertAfter = rebuild->_anewarrayTT;
             TR::Node *newArr = insertAfter->getNode()->getFirstChild();
             ListIterator<ForwardedSlot> slotIt(&rebuild->_slots);

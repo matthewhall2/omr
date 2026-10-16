@@ -4282,6 +4282,24 @@ static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *no
                 }
             }
         }
+
+    // Cancel any cold-block rebuild entries that were snapshotted from the
+    // escaping array.  Null _anewarrayTT as a sentinel; doDelayedTransformations
+    // skips entries where it is NULL.
+    {
+    ListIterator<OMR::ValuePropagation::ColdArrayRebuild> rebuildIt(&vp->_coldArrayRebuilds);
+    for (OMR::ValuePropagation::ColdArrayRebuild *r = rebuildIt.getFirst(); r; r = rebuildIt.getNext())
+        {
+        if (r->_anewarrayTT != NULL && r->_origArrayVN == gIdx)
+            {
+            if (vp->trace())
+                logprintf(vp->trace(), vp->comp()->log(),
+                    "VP ARRAY FORWARD:   cancelling cold-block rebuild for anewarray n%dn (orig VN=%d escaped)\n",
+                    r->_anewarrayTT->getNode()->getFirstChild()->getGlobalIndex(), gIdx);
+            r->_anewarrayTT = NULL;
+            }
+        }
+    }
 }
 
 TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
@@ -5334,10 +5352,10 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
                     // A snapshot is needed because later escape detection on the warm
                     // array nulls the forwarding map entries, but this clone must still
                     // hold the stored values.
+                    uint32_t origArrayVN = (uint32_t)argVN;
                     OMR::ValuePropagation::ColdArrayRebuild *rebuild
                         = new (vp->trHeapMemory()) OMR::ValuePropagation::ColdArrayRebuild(
-                            newArrTT, vp->trMemory());
-                    uint32_t origArrayVN = (uint32_t)argVN;
+                            newArrTT, origArrayVN, vp->trMemory());
                     auto slotCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(
                         vp->_arrayShadowForwardingMap);
                     for (slotCursor.SetToFirst(); slotCursor.Valid(); slotCursor.SetToNext())

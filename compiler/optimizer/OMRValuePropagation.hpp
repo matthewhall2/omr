@@ -1044,12 +1044,14 @@ public:
     struct ColdArrayRebuild {
         TR_ALLOC(TR_Memory::ValuePropagation)
 
-        ColdArrayRebuild(TR::TreeTop *anewarrayTT, TR_Memory *m)
+        ColdArrayRebuild(TR::TreeTop *anewarrayTT, uint32_t origArrayVN, TR_Memory *m)
             : _anewarrayTT(anewarrayTT)
+            , _origArrayVN(origArrayVN)
             , _slots(m)
         {}
 
-        TR::TreeTop *_anewarrayTT;
+        TR::TreeTop *_anewarrayTT;  // nulled as a cancellation sentinel
+        uint32_t     _origArrayVN;  // VN of the warm-block anewarray this was cloned from
         TR_ScratchList<ForwardedSlot> _slots;
     };
 

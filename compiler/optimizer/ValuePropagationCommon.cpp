@@ -148,6 +148,7 @@ OMR::ValuePropagation::ValuePropagation(TR::OptimizationManager *manager)
     , _arrayShadowStoreTTMap(comp()->allocator())
     , _forwardedStoreTreesToRemove(comp()->allocator())
     , _forwardedLocalStoreTreesToRemove(comp()->allocator())
+    , _coldArrayRebuilds(trMemory())
     , _pendingAlloadiMorphs(trMemory())
 {
     // DANGER !!!

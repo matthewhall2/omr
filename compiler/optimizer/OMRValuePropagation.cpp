@@ -6618,25 +6618,8 @@ void OMR::ValuePropagation::doDelayedTransformations()
         ListIterator<ColdArrayRebuild> rebuildIt(&_coldArrayRebuilds);
         for (ColdArrayRebuild *rebuild = rebuildIt.getFirst(); rebuild; rebuild = rebuildIt.getNext())
             {
-            // Only emit stores if the original warm-block array survived without
-            // escaping.  _liveAnewarrays[_origArrayVN] is nulled by escape detection
-            // in constrainCall/constrainReturn/constrainWrtBar; if it is NULL here
-            // the warm array escaped and the cold clone should not be filled.
-            {
-            CS2::HashIndex liveIdx;
-            if (!_liveAnewarrays.Locate((int32_t)rebuild->_origArrayVN, liveIdx)
-                || _liveAnewarrays[liveIdx] == NULL)
-                {
-                if (trace())
-                    logprintf(trace(), log,
-                        "VP ARRAY FORWARD:   skipping cold-block rebuild for n%dn: orig VN=%u escaped\n",
-                        rebuild->_anewarrayTT->getNode()->getFirstChild()->getGlobalIndex(),
-                        rebuild->_origArrayVN);
-                continue;
-                }
-            }
-            // Insert the anewarray treetop now that we know the warm array survived.
-            rebuild->_insertBeforeTT->insertBefore(rebuild->_anewarrayTT);
+            // The clone's anewarray treetop was already inserted eagerly in
+            // constrainCall.  Just inject the fill stores after it.
             TR::TreeTop *insertAfter = rebuild->_anewarrayTT;
             TR::Node *newArr = insertAfter->getNode()->getFirstChild();
             ListIterator<ForwardedSlot> slotIt(&rebuild->_slots);
@@ -6748,23 +6731,27 @@ void OMR::ValuePropagation::doDelayedTransformations()
     _arrayShadowForwardingMap.MakeEmpty();
     _arrayShadowStoreTTMap.MakeEmpty();
 
-    // For each anewarray that survived the GVP walk without escaping on any
-    // warm path, set allocationCanBeRemoved now that we know it is safe.
-    // Deferred from constrainANewArray so that escapes detected in later blocks
-    // (constrainCall / constrainReturn / constrainWrtBar) can clear the entry.
+    // For each warm-block anewarray that survived the GVP walk without escaping,
+    // set allocationCanBeRemoved now that we know it is safe.
+    // Gated on _forwardedAnewArrayTTs: cold-block clones are tracked in
+    // _liveAnewarrays for cascade purposes but must never get
+    // allocationCanBeRemoved — they are real allocations passed to calls.
     // Entries consumed by the store-removal pass above are already NULL.
     auto liveCursor = CS2::HashTable<int32_t, TR::Node *, TR::Allocator>::Cursor(_liveAnewarrays);
     for (liveCursor.SetToFirst(); liveCursor.Valid(); liveCursor.SetToNext())
         {
         TR::Node *arrNode = _liveAnewarrays[liveCursor];
-        if (arrNode != NULL)
-            {
-            if (trace())
-                logprintf(trace(), log,
-                    "VP ARRAY FORWARD: setting allocationCanBeRemoved on surviving anewarray n%dn\n",
-                    arrNode->getGlobalIndex());
-            arrNode->setAllocationCanBeRemoved(true);
-            }
+        if (arrNode == NULL)
+            continue;
+        int32_t arrayVN = _liveAnewarrays.KeyAt(liveCursor);
+        CS2::HashIndex arrTTIdx;
+        if (!_forwardedAnewArrayTTs.Locate(arrayVN, arrTTIdx))
+            continue; // cold-block clone — skip
+        if (trace())
+            logprintf(trace(), log,
+                "VP ARRAY FORWARD: setting allocationCanBeRemoved on surviving anewarray n%dn\n",
+                arrNode->getGlobalIndex());
+        arrNode->setAllocationCanBeRemoved(true);
         }
     _liveAnewarrays.MakeEmpty();
 

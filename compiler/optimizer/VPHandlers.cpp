@@ -2782,6 +2782,39 @@ TR::Node *constrainAstore(OMR::ValuePropagation *vp, TR::Node *node)
         vp->invalidateParmConstraintsIfNeeded(node, constraint);
     }
 
+    // Array store-to-load forwarding: track astore-to-local of the live anewarray.
+    // When the array is successfully eliminated all these locals become dead too.
+    if (vp->_isGlobalPropagation
+        && !vp->_liveAnewarrays.IsEmpty()
+        && node->getSymbol()->isAutoOrParm()
+        && !node->getOpCode().isIndirect())
+        {
+        int32_t valueVN = vp->getValueNumber(node->getFirstChild());
+        CS2::HashIndex liveIdx;
+        if (vp->_liveAnewarrays.Locate(valueVN, liveIdx)
+            && vp->_liveAnewarrays[liveIdx] != NULL)
+            {
+            uint32_t arrayVN = (uint32_t)valueVN;
+            CS2::HashIndex localListIdx;
+            TR_ScratchList<TR::TreeTop> *localList = NULL;
+            if (vp->_forwardedLocalStoreTreesToRemove.Locate(arrayVN, localListIdx))
+                {
+                localList = vp->_forwardedLocalStoreTreesToRemove[localListIdx];
+                }
+            else
+                {
+                localList = new (vp->trHeapMemory()) TR_ScratchList<TR::TreeTop>(vp->trMemory());
+                vp->_forwardedLocalStoreTreesToRemove.Add(arrayVN, localList);
+                }
+            if (localList != NULL)
+                localList->add(vp->_curTree);
+            if (vp->trace())
+                logprintf(vp->trace(), vp->comp()->log(),
+                    "VP ARRAY FORWARD:   recording local astore n%dn of anewarray VN=%u for deferred removal\n",
+                    node->getGlobalIndex(), arrayVN);
+            }
+        }
+
     // Array store-to-load forwarding: escape via astore/astorei to a non-local.
     // Stores to autos/parms are local and cannot cause the array to escape.
     // awrtbar/awrtbari go through constrainWrtBar and are not seen here.
@@ -4261,6 +4294,9 @@ static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *no
         CS2::HashIndex fwdListIdx;
         if (vp->_forwardedStoreTreesToRemove.Locate(arrayVN, fwdListIdx))
             vp->_forwardedStoreTreesToRemove[fwdListIdx] = NULL;
+        CS2::HashIndex localListIdx;
+        if (vp->_forwardedLocalStoreTreesToRemove.Locate(arrayVN, localListIdx))
+            vp->_forwardedLocalStoreTreesToRemove[localListIdx] = NULL;
         }
 
         // Cancel any pending deferred morph whose storedValue came from this

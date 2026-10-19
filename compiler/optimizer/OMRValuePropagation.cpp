@@ -6624,9 +6624,32 @@ void OMR::ValuePropagation::doDelayedTransformations()
             TR::TransformUtil::removeTree(comp(), storeTT);
             }
 
+        // Remove any astore-to-local treetops that held the array reference.
+        // These become dead once the awrtbari stores are gone.
+        int32_t arrayVN = (int32_t)_forwardedStoreTreesToRemove.KeyAt(fwdCursor);
+        {
+        CS2::HashIndex localListIdx;
+        if (_forwardedLocalStoreTreesToRemove.Locate((uint32_t)arrayVN, localListIdx))
+            {
+            TR_ScratchList<TR::TreeTop> *localList = _forwardedLocalStoreTreesToRemove[localListIdx];
+            if (localList != NULL)
+                {
+                ListIterator<TR::TreeTop> localIt(localList);
+                for (TR::TreeTop *localTT = localIt.getFirst(); localTT; localTT = localIt.getNext())
+                    {
+                    if (trace())
+                        logprintf(trace(), log,
+                            "VP ARRAY FORWARD:   (delayed) removing local astore treetop n%dn\n",
+                            localTT->getNode() ? localTT->getNode()->getGlobalIndex() : -1);
+                    removeNode(localTT->getNode(), false);
+                    TR::TransformUtil::removeTree(comp(), localTT);
+                    }
+                }
+            }
+        }
+
         // All stores for this array were forwarded; physically remove the anewarray
         // treetop using the pointer captured at registration time.
-        int32_t arrayVN = (int32_t)_forwardedStoreTreesToRemove.KeyAt(fwdCursor);
         CS2::HashIndex arrIdx;
         if (_forwardedAnewArrayTTs.Locate(arrayVN, arrIdx))
             {
@@ -6650,6 +6673,7 @@ void OMR::ValuePropagation::doDelayedTransformations()
             _liveAnewarrays[liveIdx] = NULL;
         }
     _forwardedStoreTreesToRemove.MakeEmpty();
+    _forwardedLocalStoreTreesToRemove.MakeEmpty();
     _forwardedAnewArrayTTs.MakeEmpty();
 
     _arrayShadowForwardingMap.MakeEmpty();

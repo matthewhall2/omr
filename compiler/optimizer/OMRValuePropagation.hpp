@@ -1011,6 +1011,12 @@ public:
     // specific array when escape is detected, without a flat-list scan.
     CS2::HashTable<uint32_t, TR_ScratchList<TR::TreeTop> *, TR::Allocator> _forwardedStoreTreesToRemove;
 
+    // astore-to-local treetops whose stored value IS the live anewarray (or an
+    // aload of a local that holds it).  These become dead once the awrtbari
+    // stores are removed and the anewarray is eliminated.  Keyed by array VN;
+    // nulled by removeArrayForwardingEntries on escape detection.
+    CS2::HashTable<uint32_t, TR_ScratchList<TR::TreeTop> *, TR::Allocator> _forwardedLocalStoreTreesToRemove;
+
     // Pending in-place aloadi→aload morphs for shared (rc > 1) nodes.
     // Queued during the GVP walk; executed in doDelayedTransformations after
     // _inGVPWalk is cleared so that removeChildren cannot call setUseDefInfo(NULL)

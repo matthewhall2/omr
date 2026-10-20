@@ -998,6 +998,10 @@ public:
     // Populated by constrainWrtBar during GVP; consumed by constrainAloadi.
     CS2::HashTable<uint64_t, TR::Node *, TR::Allocator> _arrayShadowForwardingMap;
 
+    // Parallel map from the same key to the unlinked/unconstrained cold value template
+    // (e.g. acall Integer.valueOf subtree) to duplicate directly into cold-block anewarrays.
+    CS2::HashTable<uint64_t, TR::Node *, TR::Allocator> _arrayShadowColdValueMap;
+
     // Parallel map from the same key to the TR::TreeTop * of the awrtbari that
     // wrote that slot.  Set to NULL if a second awrtbari writes the same slot so
     // that constrainAloadi knows not to delete either store.
@@ -1022,13 +1026,15 @@ public:
     struct ForwardedSlot {
         TR_ALLOC(TR_Memory::ValuePropagation)
 
-        ForwardedSlot(int64_t offset, TR::Node *value)
+        ForwardedSlot(int64_t offset, TR::Node *value, TR::Node *coldValue = NULL)
             : _offset(offset)
             , _value(value)
+            , _coldValue(coldValue ? coldValue : value)
         {}
 
         int64_t _offset;
         TR::Node *_value;
+        TR::Node *_coldValue;
     };
 
     // A fresh anewarray created in a cold (guard-failure / OSR) block because the

@@ -3178,6 +3178,79 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                     TR::Node *arrNode  = vp->_liveAnewarrays[liveIdx];
                     TR::Node *valueChild = node->getChild(1);
 
+                    // Resolve valueChild through its single defining store(s) if it is an aload of a temp/auto,
+                    // so the cold template gets the original expression (e.g. acall Integer.valueOf) rather
+                    // than a load from the warm-path temporary.
+                    TR_UseDefInfo *useDefInfo = vp->_useDefInfo;
+                    TR::Node *coldSourceExpr = valueChild;
+                    int32_t chainDepth = 0;
+                    while (coldSourceExpr != NULL
+                           && coldSourceExpr->getNumChildren() == 0
+                           && coldSourceExpr->getOpCode().isLoadVarDirect()
+                           && coldSourceExpr->getOpCode().hasSymbolReference()
+                           && coldSourceExpr->getSymbol()->isAutoOrParm()
+                           && !coldSourceExpr->getSymbol()->isParm()
+                           && chainDepth++ < 5)
+                        {
+                        TR::Node *defStore = NULL;
+                        if (useDefInfo)
+                            {
+                            uint16_t uIdx = coldSourceExpr->getUseDefIndex();
+                            if (useDefInfo->isUseIndex(uIdx))
+                                {
+                                TR_UseDefInfo::BitVector defs(vp->comp()->allocator());
+                                if (useDefInfo->getUseDef(defs, uIdx) && defs.PopulationCount() == 1)
+                                    {
+                                    TR_UseDefInfo::BitVector::Cursor vc(defs);
+                                    vc.SetToFirstOne();
+                                    if ((int32_t)vc >= useDefInfo->getFirstRealDefIndex())
+                                        {
+                                        TR::Node *dNode = useDefInfo->getNode(vc);
+                                        if (dNode && dNode->getOpCode().isStoreDirect() && dNode->getNumChildren() > 0)
+                                            defStore = dNode;
+                                        }
+                                    }
+                                }
+                            }
+
+                        // Also fall back to backward scan within the current block if useDefInfo did not resolve it
+                        if (defStore == NULL)
+                            {
+                            TR::SymbolReference *sRef = coldSourceExpr->getSymbolReference();
+                            for (TR::TreeTop *prevTT = vp->_curTree->getPrevTreeTop();
+                                 prevTT != NULL && prevTT->getNode()->getOpCodeValue() != TR::BBStart;
+                                 prevTT = prevTT->getPrevTreeTop())
+                                {
+                                TR::Node *pNode = prevTT->getNode();
+                                if (pNode->getOpCode().isStoreDirect()
+                                    && pNode->getOpCode().hasSymbolReference()
+                                    && pNode->getSymbolReference() == sRef
+                                    && pNode->getNumChildren() > 0)
+                                    {
+                                    defStore = pNode;
+                                    break;
+                                    }
+                                }
+                            }
+
+                        if (defStore != NULL && defStore->getNumChildren() > 0)
+                            {
+                            coldSourceExpr = defStore->getFirstChild();
+                            }
+                        else
+                            {
+                            break;
+                            }
+                        }
+
+                    TR::Node *coldTemplate = coldSourceExpr ? coldSourceExpr->duplicateTree() : NULL;
+                    if (vp->trace() && coldSourceExpr != valueChild && coldSourceExpr != NULL)
+                        {
+                        logprintf(vp->trace(), vp->comp()->log(),
+                            "VP ARRAY FORWARD:   resolved valueChild n%dn to defining store expression n%dn %s for cold template\n",
+                            valueChild->getGlobalIndex(), coldSourceExpr->getGlobalIndex(), coldSourceExpr->getOpCode().getName());
+                        }
+
                     TR::Node *forwardedValue = NULL;
 
                     if (valueChild->getNumChildren() == 0)
@@ -3188,7 +3261,6 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                             && valueChild->getSymbol()->isAutoOrParm()
                             && !valueChild->getSymbol()->isParm())
                             {
-                            TR_UseDefInfo *useDefInfo = vp->_useDefInfo;
                             bool skipValue = true;
                             if (useDefInfo)
                                 {
@@ -3231,98 +3303,30 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                         }
                     else
                         {
-                        // Check if an existing temp already stores valueChild in preceding trees within this block
-                        TR::SymbolReference *existingTempSymRef = NULL;
+                        // Non-leaf value: privatise into a fresh single-def temp for warm forwarding
+                        TR::SymbolReference *tempSymRef =
+                            vp->comp()->getSymRefTab()->createTemporary(
+                                vp->comp()->getMethodSymbol(), TR::Address);
+                        TR::Node *astoreNode = TR::Node::createWithSymRef(
+                            TR::astore, 1, 1, valueChild, tempSymRef);
+                        TR::TreeTop *astoreTT = TR::TreeTop::create(
+                            vp->comp(), astoreNode, NULL, NULL);
+                        vp->_curTree->insertBefore(astoreTT);
+
+                        TR::Node *tempLoad = TR::Node::createWithSymRef(
+                            TR::aload, 0, tempSymRef);
+                        tempLoad->setReferenceCount(1);
+                        node->setAndIncChild(1, tempLoad);
+                        valueChild->decReferenceCount();
+
+                        forwardedValue = TR::Node::createWithSymRef(TR::aload, 0, tempSymRef);
+                        forwardedValue->setReferenceCount(1);
+
                         if (vp->trace())
                             logprintf(vp->trace(), vp->comp()->log(),
-                                "VP ARRAY FORWARD:   searching preceding treetops from awrtbari tt [%p] n%dn for value n%dn\n",
-                                vp->_curTree, node->getGlobalIndex(), valueChild->getGlobalIndex());
-
-                        TR::TreeTop *prevTT = vp->_curTree->getPrevTreeTop();
-                        for (; prevTT != NULL && prevTT->getNode()->getOpCodeValue() != TR::BBStart;
-                             prevTT = prevTT->getPrevTreeTop())
-                            {
-                            TR::Node *prevNode = prevTT->getNode();
-                            if (vp->trace())
-                                logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:     inspecting tt [%p] node n%dn %s\n",
-                                    prevTT, prevNode->getGlobalIndex(), prevNode->getOpCode().getName());
-
-                            if (prevNode->getOpCode().isStoreDirect()
-                                && prevNode->getOpCode().hasSymbolReference()
-                                && prevNode->getSymbol()->isAutoOrParm()
-                                && !prevNode->getSymbol()->isParm()
-                                && prevNode->getFirstChild() == valueChild)
-                                {
-                                existingTempSymRef = prevNode->getSymbolReference();
-                                if (vp->trace())
-                                    logprintf(vp->trace(), vp->comp()->log(),
-                                        "VP ARRAY FORWARD:     matched store tt [%p] node n%dn storing into temp #%d\n",
-                                        prevTT, prevNode->getGlobalIndex(), existingTempSymRef->getReferenceNumber());
-                                break;
-                                }
-                            if (prevNode->getOpCode().isCall()
-                                || prevNode->getOpCode().isBranch()
-                                || prevNode->getOpCode().isReturn())
-                                {
-                                if (vp->trace())
-                                    logprintf(vp->trace(), vp->comp()->log(),
-                                        "VP ARRAY FORWARD:     stopped search at tt [%p] node n%dn %s (call/branch/return)\n",
-                                        prevTT, prevNode->getGlobalIndex(), prevNode->getOpCode().getName());
-                                break;
-                                }
-                            }
-
-                        if (existingTempSymRef == NULL && vp->trace())
-                            {
-                            if (prevTT == NULL)
-                                logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:     stopped search: reached start of tree (NULL prevTT)\n");
-                            else if (prevTT->getNode()->getOpCodeValue() == TR::BBStart)
-                                logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:     stopped search: reached BBStart tt [%p] node n%dn\n",
-                                    prevTT, prevTT->getNode()->getGlobalIndex());
-                            }
-
-                        if (existingTempSymRef != NULL)
-                            {
-                            // Reuse existing temp for forwarding and cold rewrites without modifying the awrtbari child
-                            forwardedValue = TR::Node::createWithSymRef(TR::aload, 0, existingTempSymRef);
-                            forwardedValue->setReferenceCount(1);
-
-                            if (vp->trace())
-                                logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:   reusing existing temp #%d for non-leaf value n%dn\n",
-                                    existingTempSymRef->getReferenceNumber(),
-                                    valueChild->getGlobalIndex());
-                            }
-                        else
-                            {
-                            // Non-leaf value without existing temp: privatise into a new temp
-                            TR::SymbolReference *tempSymRef =
-                                vp->comp()->getSymRefTab()->createTemporary(
-                                    vp->comp()->getMethodSymbol(), TR::Address);
-                            TR::Node *astoreNode = TR::Node::createWithSymRef(
-                                TR::astore, 1, 1, valueChild, tempSymRef);
-                            TR::TreeTop *astoreTT = TR::TreeTop::create(
-                                vp->comp(), astoreNode, NULL, NULL);
-                            vp->_curTree->insertBefore(astoreTT);
-
-                            TR::Node *tempLoad = TR::Node::createWithSymRef(
-                                TR::aload, 0, tempSymRef);
-                            tempLoad->setReferenceCount(1);
-                            node->setAndIncChild(1, tempLoad);
-                            valueChild->decReferenceCount();
-
-                            forwardedValue = TR::Node::createWithSymRef(TR::aload, 0, tempSymRef);
-                            forwardedValue->setReferenceCount(1);
-
-                            if (vp->trace())
-                                logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:   privatized non-leaf value n%dn into astore/aload temp #%d\n",
-                                    valueChild->getGlobalIndex(),
-                                    tempSymRef->getReferenceNumber());
-                            }
+                                "VP ARRAY FORWARD:   privatized non-leaf value n%dn into astore/aload temp #%d\n",
+                                valueChild->getGlobalIndex(),
+                                tempSymRef->getReferenceNumber());
                         }
 
                     if (forwardedValue != NULL)
@@ -3338,12 +3342,14 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                         if (!vp->_arrayShadowForwardingMap.Locate(key, fwdIdx))
                             {
                             vp->_arrayShadowForwardingMap.Add(key, forwardedValue);
+                            vp->_arrayShadowColdValueMap.Add(key, coldTemplate);
                             vp->_arrayShadowStoreTTMap.Add(key, vp->_curTree);
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:   mapped [anewarray n%dn VN=%d offset %lld] -> value n%dn\n",
+                                    "VP ARRAY FORWARD:   mapped [anewarray n%dn VN=%d offset %lld] -> value n%dn (cold template n%dn)\n",
                                     arrNode->getGlobalIndex(), baseVN, (long long)offset,
-                                    forwardedValue->getGlobalIndex());
+                                    forwardedValue->getGlobalIndex(),
+                                    coldTemplate ? coldTemplate->getGlobalIndex() : 0);
                             }
                         else
                             {
@@ -4349,6 +4355,10 @@ static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *no
             cancelledValue = vp->_arrayShadowForwardingMap[fwdIdx];
             vp->_arrayShadowForwardingMap[fwdIdx] = NULL;
             }
+
+        CS2::HashIndex coldIdx;
+        if (vp->_arrayShadowColdValueMap.Locate(k, coldIdx))
+            vp->_arrayShadowColdValueMap[coldIdx] = NULL;
 
         CS2::HashIndex storeIdx;
         if (vp->_arrayShadowStoreTTMap.Locate(k, storeIdx))
@@ -5426,6 +5436,7 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
                         = vp->comp()->getSymRefTab()->findOrCreateANewArraySymbolRef(
                             origType->getSymbolReference()->getOwningMethodSymbol(vp->comp()));
                     TR::Node *newArr = TR::Node::createWithSymRef(arrNode, TR::anewarray, 2, symRef);
+                    newArr->setHeapificationAlloc(true);
                     newArr->setAndIncChild(0, newSize);
                     newArr->setAndIncChild(1, newType);
 
@@ -5456,8 +5467,12 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
                         if ((slotKey >> 32) != origArrayVN || slotValue == NULL)
                             continue;
                         int64_t slotOffset = (int64_t)(int32_t)(uint32_t)(slotKey & 0xffffffffu);
+                        TR::Node *coldVal = NULL;
+                        CS2::HashIndex coldIdx;
+                        if (vp->_arrayShadowColdValueMap.Locate(slotKey, coldIdx))
+                            coldVal = vp->_arrayShadowColdValueMap[coldIdx];
                         rebuild->_slots.add(new (vp->trHeapMemory()) OMR::ValuePropagation::ForwardedSlot(
-                            slotOffset, slotValue));
+                            slotOffset, slotValue, coldVal));
                         }
                     vp->_coldArrayRebuilds.add(rebuild);
                     }

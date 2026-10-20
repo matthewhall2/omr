@@ -6603,6 +6603,16 @@ bool OMR::ValuePropagation::canClassBeTrustedAsFixedClass(TR::SymbolReference *s
     return true;
 }
 
+static void markHeapificationAllocs(TR::Node *node)
+{
+    if (node == NULL)
+        return;
+    if (node->getOpCode().isNew())
+        node->setHeapificationAlloc(true);
+    for (int32_t i = 0; i < node->getNumChildren(); ++i)
+        markHeapificationAllocs(node->getChild(i));
+}
+
 void OMR::ValuePropagation::doDelayedTransformations()
 {
     OMR::Logger *log = comp()->log();
@@ -6628,7 +6638,11 @@ void OMR::ValuePropagation::doDelayedTransformations()
                     ? TR::Node::lconst(newArr, slot->_offset)
                     : TR::Node::iconst(newArr, (int32_t)slot->_offset);
                 TR::Node *addrNode = TR::Node::create(newArr, is64 ? TR::aladd : TR::aiadd, 2, newArr, offsetNode);
-                TR::Node *valueNode = TR::Node::copy(slot->_value);
+                TR::Node *valueNode = slot->_coldValue
+                    ? slot->_coldValue->duplicateTree()
+                    : TR::Node::copy(slot->_value);
+                if (valueNode)
+                    markHeapificationAllocs(valueNode);
                 TR::Node *storeNode = TR::Node::createWithSymRef(
                     TR::awrtbari, 3, 3, addrNode, valueNode, newArr, shadowSymRef);
 
@@ -6722,6 +6736,7 @@ void OMR::ValuePropagation::doDelayedTransformations()
     _forwardedAnewArrayTTs.MakeEmpty();
 
     _arrayShadowForwardingMap.MakeEmpty();
+    _arrayShadowColdValueMap.MakeEmpty();
     _arrayShadowStoreTTMap.MakeEmpty();
 
     // For each warm-block anewarray that survived the GVP walk without escaping,

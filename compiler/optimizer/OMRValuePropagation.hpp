@@ -980,49 +980,36 @@ public:
     TR_ValueNumberInfo *_valueNumberInfo; // Cached value number info
     CS2::HashTable<uint64_t, TR::list<TR::Node *> *, TR::Allocator> _constNodeInfo;
 
-    // Set of anewarray nodes currently being tracked for store-to-load forwarding.
-    // Keyed by value number; value is the anewarray node itself (used to drive
-    // setAllocationCanBeRemoved in doDelayedTransformations).
-    // An entry is removed when an escape is detected in a non-cold/non-OSR block.
-    // Populated by constrainANewArray during GVP; cleared in doDelayedTransformations.
+    // Array store-spread elimination state.
+    //
+    // Warm-block anewarrays under active tracking — VN -> node.  Entries are nulled
+    // on escape; consumed by doDelayedTransformations.
     CS2::HashTable<int32_t, TR::Node *, TR::Allocator> _liveAnewarrays;
 
-    // Parallel map from the same VN key to the TR::TreeTop * of the anewarray.
-    // Used in doDelayedTransformations to physically remove the allocation when
-    // all of its stores were forwarded and removed.
+    // VN -> treetop of the anewarray, for physical removal once all stores are forwarded.
     CS2::HashTable<int32_t, TR::TreeTop *, TR::Allocator> _forwardedAnewArrayTTs;
 
-    // Map from (anewarray_VN << 32 | constant_offset) to the post-constrained
-    // valueChild node of the awrtbari that wrote that slot.  The value node is
-    // always a leaf (getNumChildren() == 0) — non-leaf values are not recorded.
-    // Populated by constrainWrtBar during GVP; consumed by constrainAloadi.
+    // (anewarray_VN << 32 | constant_byte_offset) -> leaf value written by the awrtbari.
+    // Populated by constrainWrtBar; consumed by constrainAloadi.
     CS2::HashTable<uint64_t, TR::Node *, TR::Allocator> _arrayShadowForwardingMap;
 
-    // Parallel map from the same key to the unlinked/unconstrained cold value template
-    // (e.g. acall Integer.valueOf subtree) to duplicate directly into cold-block anewarrays.
+    // Same key -> cold-path expression template (duplicateTree of the stored value)
+    // used to fill cold-block anewarray clones in doDelayedTransformations.
     CS2::HashTable<uint64_t, TR::Node *, TR::Allocator> _arrayShadowColdValueMap;
 
-    // Parallel map from the same key to the TR::TreeTop * of the awrtbari that
-    // wrote that slot.  Set to NULL if a second awrtbari writes the same slot so
-    // that constrainAloadi knows not to delete either store.
-    // Populated by constrainWrtBar during GVP; consumed/cleared in doDelayedTransformations.
+    // Same key -> treetop of the awrtbari.  Set to NULL when a second store hits the
+    // same slot, preventing removal of either store.
     CS2::HashTable<uint64_t, TR::TreeTop *, TR::Allocator> _arrayShadowStoreTTMap;
 
-    // Forwarded awrtbari treetops to remove in doDelayedTransformations, after
-    // the use-def assertion check in GVP::perform() has already passed.
-    // Keyed by the array VN (the upper 32 bits of the _arrayShadowStoreTTMap key)
-    // so that removeArrayForwardingEntries can cancel all queued removals for a
-    // specific array when escape is detected, without a flat-list scan.
+    // arrayVN -> list of awrtbari treetops queued for deferred removal.  Nulled by
+    // removeArrayForwardingEntries so in-flight escape detection can cancel them.
     CS2::HashTable<uint32_t, TR_ScratchList<TR::TreeTop> *, TR::Allocator> _forwardedStoreTreesToRemove;
 
-    // astore-to-local treetops whose stored value IS the live anewarray (or an
-    // aload of a local that holds it).  These become dead once the awrtbari
-    // stores are removed and the anewarray is eliminated.  Keyed by array VN;
-    // nulled by removeArrayForwardingEntries on escape detection.
+    // arrayVN -> list of astore-to-local treetops that hold the live anewarray.
+    // Removed alongside the awrtbari stores when the allocation is eliminated.
     CS2::HashTable<uint32_t, TR_ScratchList<TR::TreeTop> *, TR::Allocator> _forwardedLocalStoreTreesToRemove;
 
-    // One forwarded array slot: constant offset and the (leaf) value that was
-    // stored there in the warm path.
+    // One forwarded slot: the constant byte offset and the value stored there.
     struct ForwardedSlot {
         TR_ALLOC(TR_Memory::ValuePropagation)
 
@@ -1032,21 +1019,16 @@ public:
             , _coldValue(coldValue ? coldValue : value)
         {}
 
-        int64_t _offset;
+        int64_t   _offset;
         TR::Node *_value;
         TR::Node *_coldValue;
     };
 
-    // A fresh anewarray created in a cold (guard-failure / OSR) block because the
-    // original array escapes through a call there.  _slots is a snapshot, taken at
-    // the call, of every forwarded slot of the original array.  In
-    // doDelayedTransformations, if the original warm array survived (i.e. was not
-    // later invalidated), _anewarrayTT is inserted before _insertBeforeTT and then
-    // an awrtbari (plus compressedRefs anchor if needed) is created for each slot
-    // and inserted after _anewarrayTT.  If the warm array was invalidated the
-    // entire rebuild is skipped (no treetop insertion, no stores).
-    // The anewarray node is _anewarrayTT->getNode()->getFirstChild() (the treetop
-    // wrapper's child).
+    // A fresh anewarray allocated in a cold (guard-failure/OSR) block to replace the
+    // warm-block original that escapes through a call there.  _slots snapshots the
+    // forwarded slots at call time; doDelayedTransformations injects fill stores after
+    // _anewarrayTT.  If the warm original was later invalidated the whole rebuild is
+    // skipped.
     struct ColdArrayRebuild {
         TR_ALLOC(TR_Memory::ValuePropagation)
 
@@ -1058,22 +1040,19 @@ public:
             , _slots(m)
         {}
 
-        TR::TreeTop *_anewarrayTT;       // the treetop to insert (deferred)
-        TR::TreeTop *_insertBeforeTT;    // insert _anewarrayTT before this tree
-        uint32_t     _origArrayVN;       // VN of the warm-block anewarray this was cloned from
+        TR::TreeTop *_anewarrayTT;    // treetop wrapping the cloned anewarray
+        TR::TreeTop *_insertBeforeTT; // fill stores go after _anewarrayTT
+        uint32_t     _origArrayVN;    // VN of the warm-path original
         TR_ScratchList<ForwardedSlot> _slots;
     };
 
-    // Populated by constrainCall (cold-block clone); consumed/cleared in
-    // doDelayedTransformations.
+    // Populated by constrainCall; consumed by doDelayedTransformations.
     TR_ScratchList<ColdArrayRebuild> _coldArrayRebuilds;
 
-    // Pending in-place aloadi→aload morphs for shared (rc > 1) nodes.
-    // Queued during the GVP walk; executed in doDelayedTransformations after
-    // _inGVPWalk is cleared so that removeChildren cannot call setUseDefInfo(NULL)
-    // while the walk's cached use-def pointer is still live.
-    // key = the aloadi node to morph; value = the forwarded value node whose
-    // opcode/symref to adopt.
+    // Deferred in-place aloadi morphs: key = aloadi to rewrite, value = stored value
+    // whose opcode/symref to adopt.  Escape detection cancels a morph by setting key
+    // to NULL.  Executed after the GVP walk completes to avoid use-def info teardown
+    // while the walk's cached pointer is still live.
     TR_ScratchList<TR_Pair<TR::Node, TR::Node>> _pendingAlloadiMorphs;
 
     // Flags

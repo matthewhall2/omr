@@ -6617,9 +6617,8 @@ void OMR::ValuePropagation::doDelayedTransformations()
 {
     OMR::Logger *log = comp()->log();
 
-    // Fill each cold-block anewarray with the values stored into the original
-    // array.  Must run before the store-removal loop below so that the snapshotted
-    // value nodes are still intact when they are copied.
+    // Fill each cold-block anewarray clone with stores for all forwarded slots.
+    // Must run before the store-removal loop so the value nodes are still intact.
     if (!_coldArrayRebuilds.isEmpty())
         {
         const bool is64 = comp()->target().is64Bit();
@@ -6627,8 +6626,6 @@ void OMR::ValuePropagation::doDelayedTransformations()
         ListIterator<ColdArrayRebuild> rebuildIt(&_coldArrayRebuilds);
         for (ColdArrayRebuild *rebuild = rebuildIt.getFirst(); rebuild; rebuild = rebuildIt.getNext())
             {
-            // The clone's anewarray treetop was already inserted eagerly in
-            // constrainCall.  Just inject the fill stores after it.
             TR::TreeTop *insertAfter = rebuild->_anewarrayTT;
             TR::Node *newArr = insertAfter->getNode()->getFirstChild();
             ListIterator<ForwardedSlot> slotIt(&rebuild->_slots);
@@ -6683,10 +6680,9 @@ void OMR::ValuePropagation::doDelayedTransformations()
             TR::TransformUtil::removeTree(comp(), storeTT);
             }
 
-        // Remove any astore-to-local treetops that held the array reference.
-        // These become dead once the awrtbari stores are gone.
+        // Remove astore-to-local treetops that held the array reference — dead
+        // once the awrtbari stores are gone.
         int32_t arrayVN = (int32_t)_forwardedStoreTreesToRemove.KeyAt(fwdCursor);
-        {
         CS2::HashIndex localListIdx;
         if (_forwardedLocalStoreTreesToRemove.Locate((uint32_t)arrayVN, localListIdx))
             {
@@ -6705,10 +6701,8 @@ void OMR::ValuePropagation::doDelayedTransformations()
                     }
                 }
             }
-        }
 
-        // All stores for this array were forwarded; physically remove the anewarray
-        // treetop using the pointer captured at registration time.
+        // All stores forwarded — remove the anewarray treetop.
         CS2::HashIndex arrIdx;
         if (_forwardedAnewArrayTTs.Locate(arrayVN, arrIdx))
             {
@@ -6739,12 +6733,8 @@ void OMR::ValuePropagation::doDelayedTransformations()
     _arrayShadowColdValueMap.MakeEmpty();
     _arrayShadowStoreTTMap.MakeEmpty();
 
-    // For each warm-block anewarray that survived the GVP walk without escaping,
-    // set allocationCanBeRemoved now that we know it is safe.
-    // Gated on _forwardedAnewArrayTTs: cold-block clones are tracked in
-    // _liveAnewarrays for cascade purposes but must never get
-    // allocationCanBeRemoved — they are real allocations passed to calls.
-    // Entries consumed by the store-removal pass above are already NULL.
+    // Mark surviving warm-block anewarrays as removable.  Cold-block clones are
+    // not in _forwardedAnewArrayTTs and must never get allocationCanBeRemoved.
     auto liveCursor = CS2::HashTable<int32_t, TR::Node *, TR::Allocator>::Cursor(_liveAnewarrays);
     for (liveCursor.SetToFirst(); liveCursor.Valid(); liveCursor.SetToNext())
         {
@@ -6763,18 +6753,15 @@ void OMR::ValuePropagation::doDelayedTransformations()
         }
     _liveAnewarrays.MakeEmpty();
 
-    // Execute deferred in-place morphs for shared (rc > 1) aloadi nodes that
-    // were forwarded to a known stored value during the GVP walk.  Done here
-    // (after _inGVPWalk is cleared and the use-def assertion in GVP::perform
-    // has passed) so that removeChildren cannot call setUseDefInfo(NULL) while
-    // GVP's cached use-def pointer is still live.
+    // Execute deferred aloadi rewrites (queued during the GVP walk; done here
+    // so removeChildren cannot call setUseDefInfo(NULL) while the walk's cached
+    // pointer is still live).
     ListIterator<TR_Pair<TR::Node, TR::Node>> morphIt(&_pendingAlloadiMorphs);
     for (TR_Pair<TR::Node, TR::Node> *p = morphIt.getFirst(); p; p = morphIt.getNext())
         {
         TR::Node *load        = p->getKey();
         TR::Node *storedValue = p->getValue();
-        // A null load pointer means the morph was cancelled by escape detection.
-        if (load == NULL)
+        if (load == NULL) // cancelled by escape detection
             continue;
         removeChildren(load);
         if (storedValue->getOpCode().hasSymbolReference())

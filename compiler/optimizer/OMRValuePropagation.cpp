@@ -6614,7 +6614,6 @@ void OMR::ValuePropagation::doDelayedTransformations()
         {
         const bool is64 = comp()->target().is64Bit();
         TR::SymbolReference *shadowSymRef = comp()->getSymRefTab()->findOrCreateArrayShadowSymbolRef(TR::Address);
-        bool anyInserted = false;
         ListIterator<ColdArrayRebuild> rebuildIt(&_coldArrayRebuilds);
         for (ColdArrayRebuild *rebuild = rebuildIt.getFirst(); rebuild; rebuild = rebuildIt.getNext())
             {
@@ -6636,7 +6635,6 @@ void OMR::ValuePropagation::doDelayedTransformations()
                 TR::TreeTop *storeTT = TR::TreeTop::create(comp(), storeNode);
                 insertAfter->insertAfter(storeTT);
                 insertAfter = storeTT;
-                anyInserted = true;
 
                 if (comp()->useCompressedPointers())
                     {
@@ -6652,11 +6650,6 @@ void OMR::ValuePropagation::doDelayedTransformations()
                 }
             }
         _coldArrayRebuilds.init();
-        if (anyInserted)
-            {
-            invalidateUseDefInfo();
-            invalidateValueNumberInfo();
-            }
         }
 
     auto fwdCursor = CS2::HashTable<uint32_t, TR_ScratchList<TR::TreeTop> *, TR::Allocator>::Cursor(_forwardedStoreTreesToRemove);

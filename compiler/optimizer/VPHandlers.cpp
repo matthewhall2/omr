@@ -5369,6 +5369,31 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
                         vp->comp(), TR::Node::create(TR::treetop, 1, newArr));
                     vp->_curTree->insertBefore(newArrTT);
 
+                    // Snapshot the forwarded slots of the warm original so
+                    // doDelayedTransformations can inject awrtbari fill stores into
+                    // the clone.  Cold-block clones are never in _liveAnewarrays (they
+                    // are skipped by constrainANewArray), so this path only fires for
+                    // warm originals.
+                    {
+                    uint32_t origArrayVN = (uint32_t)argVN;
+                    OMR::ValuePropagation::ColdArrayRebuild *rebuild
+                        = new (vp->trHeapMemory()) OMR::ValuePropagation::ColdArrayRebuild(
+                            newArrTT, vp->_curTree, origArrayVN, vp->trMemory());
+                    auto slotCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(
+                        vp->_arrayShadowForwardingMap);
+                    for (slotCursor.SetToFirst(); slotCursor.Valid(); slotCursor.SetToNext())
+                        {
+                        uint64_t slotKey = vp->_arrayShadowForwardingMap.KeyAt(slotCursor);
+                        TR::Node *slotValue = vp->_arrayShadowForwardingMap[slotCursor];
+                        if ((slotKey >> 32) != origArrayVN || slotValue == NULL)
+                            continue;
+                        int64_t slotOffset = (int64_t)(int32_t)(uint32_t)(slotKey & 0xffffffffu);
+                        rebuild->_slots.add(new (vp->trHeapMemory()) OMR::ValuePropagation::ForwardedSlot(
+                            slotOffset, slotValue));
+                        }
+                    vp->_coldArrayRebuilds.add(rebuild);
+                    }
+
                     // Redirect the call arg from the warm-block anewarray to the new one.
                     node->getChild(i)->decReferenceCount();
                     if (vp->trace())

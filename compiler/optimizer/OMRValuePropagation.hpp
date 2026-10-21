@@ -1024,24 +1024,31 @@ public:
         TR::Node *_coldValue;
     };
 
-    // A fresh anewarray allocated in a cold (guard-failure/OSR) block to replace the
-    // warm-block original that escapes through a call there.  _slots snapshots the
-    // forwarded slots at call time; doDelayedTransformations injects fill stores after
-    // _anewarrayTT.  If the warm original was later invalidated the whole rebuild is
-    // skipped.
+    // A fresh anewarray for a cold (guard-failure/OSR) block, to replace the warm-block
+    // original that escapes through a call there.  Everything is deferred: in
+    // doDelayedTransformations, if the warm original survived (its _liveAnewarrays entry
+    // is still non-NULL), the treetop is inserted and the call arg is redirected;
+    // otherwise the whole rebuild is discarded (the warm array was invalidated).
     struct ColdArrayRebuild {
         TR_ALLOC(TR_Memory::ValuePropagation)
 
         ColdArrayRebuild(TR::TreeTop *anewarrayTT, TR::TreeTop *insertBeforeTT,
-                         uint32_t origArrayVN, TR_Memory *m)
+                         TR::Node *callNode, int32_t argIndex,
+                         TR::Node *origArrNode, uint32_t origArrayVN, TR_Memory *m)
             : _anewarrayTT(anewarrayTT)
             , _insertBeforeTT(insertBeforeTT)
+            , _callNode(callNode)
+            , _argIndex(argIndex)
+            , _origArrNode(origArrNode)
             , _origArrayVN(origArrayVN)
             , _slots(m)
         {}
 
-        TR::TreeTop *_anewarrayTT;    // treetop wrapping the cloned anewarray
-        TR::TreeTop *_insertBeforeTT; // fill stores go after _anewarrayTT
+        TR::TreeTop *_anewarrayTT;    // uninserted treetop wrapping the cloned anewarray
+        TR::TreeTop *_insertBeforeTT; // insert _anewarrayTT before this treetop
+        TR::Node    *_callNode;       // the call whose arg is to be redirected
+        int32_t      _argIndex;       // index of the arg to redirect
+        TR::Node    *_origArrNode;    // the warm anewarray node (for rc adjustment)
         uint32_t     _origArrayVN;    // VN of the warm-path original
         TR_ScratchList<ForwardedSlot> _slots;
     };

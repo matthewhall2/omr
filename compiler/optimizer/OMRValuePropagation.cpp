@@ -6617,8 +6617,10 @@ void OMR::ValuePropagation::doDelayedTransformations()
 {
     OMR::Logger *log = comp()->log();
 
-    // Fill each cold-block anewarray clone with stores for all forwarded slots.
-    // Must run before the store-removal loop so the value nodes are still intact.
+    // For each cold-block clone: if the warm array survived, insert the anewarray
+    // treetop, redirect the call arg, and inject fill stores.  If the warm array was
+    // invalidated by a later warm-path escape, discard the rebuild entirely.
+    // Must run before the store-removal loop so forwarded value nodes are still intact.
     if (!_coldArrayRebuilds.isEmpty())
         {
         const bool is64 = comp()->target().is64Bit();
@@ -6626,8 +6628,30 @@ void OMR::ValuePropagation::doDelayedTransformations()
         ListIterator<ColdArrayRebuild> rebuildIt(&_coldArrayRebuilds);
         for (ColdArrayRebuild *rebuild = rebuildIt.getFirst(); rebuild; rebuild = rebuildIt.getNext())
             {
+            // Check whether the warm array survived the GVP walk.
+            CS2::HashIndex liveIdx;
+            if (!_liveAnewarrays.Locate((int32_t)rebuild->_origArrayVN, liveIdx)
+                || _liveAnewarrays[liveIdx] == NULL)
+                {
+                if (trace())
+                    logprintf(trace(), log,
+                        "VP ARRAY FORWARD:   (delayed) discarding cold clone n%dn — warm array was invalidated\n",
+                        rebuild->_anewarrayTT->getNode()->getFirstChild()->getGlobalIndex());
+                continue;
+                }
+
+            // Warm array survived: insert the clone treetop and redirect the call arg.
+            rebuild->_insertBeforeTT->insertBefore(rebuild->_anewarrayTT);
+            TR::Node *newArr = rebuild->_anewarrayTT->getNode()->getFirstChild();
+            rebuild->_callNode->getChild(rebuild->_argIndex)->decReferenceCount();
+            rebuild->_callNode->setAndIncChild(rebuild->_argIndex, newArr);
+            if (trace())
+                logprintf(trace(), log,
+                    "VP ARRAY FORWARD:   (delayed) inserted cold clone n%dn; redirected call arg %d of n%dn\n",
+                    newArr->getGlobalIndex(), rebuild->_argIndex,
+                    rebuild->_callNode->getGlobalIndex());
+
             TR::TreeTop *insertAfter = rebuild->_anewarrayTT;
-            TR::Node *newArr = insertAfter->getNode()->getFirstChild();
             ListIterator<ForwardedSlot> slotIt(&rebuild->_slots);
             for (ForwardedSlot *slot = slotIt.getFirst(); slot; slot = slotIt.getNext())
                 {

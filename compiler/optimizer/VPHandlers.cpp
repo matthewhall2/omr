@@ -5145,13 +5145,11 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
     constrainChildren(vp, node);
 
     // Array store-spread elimination: handle escapes through call arguments.
-    if (vp->_isGlobalPropagation && !vp->_liveAnewarrays.IsEmpty())
-        {
+    if (vp->_isGlobalPropagation && !vp->_liveAnewarrays.IsEmpty()) {
         bool inColdBlock = isGuardFailureOrOSRBlock(vp);
 
         int32_t firstArgIndex = node->getFirstArgumentIndex();
-        for (int32_t i = firstArgIndex; i < node->getNumChildren(); ++i)
-            {
+        for (int32_t i = firstArgIndex; i < node->getNumChildren(); ++i) {
             int32_t argVN = vp->getValueNumber(node->getChild(i));
             CS2::HashIndex liveIdx;
             if (!vp->_liveAnewarrays.Locate(argVN, liveIdx)
@@ -5160,17 +5158,14 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
 
             TR::Node *arrNode = vp->_liveAnewarrays[liveIdx];
 
-            if (!inColdBlock)
-                {
+            if (!inColdBlock) {
                 if (vp->trace())
                     logprintf(vp->trace(), vp->comp()->log(),
                         "ARRAY STORE-SPREAD ELIMINATION   anewarray n%dn escapes via call arg %d of n%dn — invalidating\n",
                         arrNode->getGlobalIndex(), i, node->getGlobalIndex());
                 removeArrayForwardingEntries(vp, arrNode);
                 vp->_liveAnewarrays[liveIdx] = NULL;
-                }
-            else
-                {
+            } else {
                 // The call is in a cold (guard-failure/OSR) block.  Clone a fresh
                 // anewarray here and redirect the call arg to it, preserving the
                 // warm-path array for elimination.
@@ -5195,18 +5190,15 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
 
                 // Defer insertion and arg redirect to doDelayedTransformations,
                 // which skips this rebuild if the opt was invalidated later.
-                TR::TreeTop *newArrTT = OMR::TreeTop::create(
-                    vp->comp(), TR::Node::create(TR::treetop, 1, newArr));
+                TR::TreeTop *newArrTT = OMR::TreeTop::create(vp->comp(), TR::Node::create(TR::treetop, 1, newArr));
 
                 uint32_t origArrayVN = (uint32_t)argVN;
                 OMR::ValuePropagation::ColdArrayRebuild *rebuild
                     = new (vp->trHeapMemory()) OMR::ValuePropagation::ColdArrayRebuild(
                         newArrTT, vp->_curTree, node, i, arrNode,
                         origArrayVN, vp->trMemory());
-                auto slotCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(
-                    vp->_arraySlotValueMap);
-                for (slotCursor.SetToFirst(); slotCursor.Valid(); slotCursor.SetToNext())
-                    {
+                auto slotCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(vp->_arraySlotValueMap);
+                for (slotCursor.SetToFirst(); slotCursor.Valid(); slotCursor.SetToNext()) {
                     uint64_t slotKey = vp->_arraySlotValueMap.KeyAt(slotCursor);
                     TR::Node *slotValue = vp->_arraySlotValueMap[slotCursor];
                     if ((slotKey >> 32) != origArrayVN || slotValue == NULL)
@@ -5216,18 +5208,19 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
                     CS2::HashIndex coldIdx;
                     if (vp->_arraySlotColdValueMap.Locate(slotKey, coldIdx))
                         coldVal = vp->_arraySlotColdValueMap[coldIdx];
+
                     rebuild->_slots.add(new (vp->trHeapMemory()) OMR::ValuePropagation::ForwardedSlot(
                         slotOffset, slotValue, coldVal));
-                    }
-                vp->_coldArrayRebuilds.add(rebuild);
+                }
 
+                vp->_coldArrayRebuilds.add(rebuild);
                 if (vp->trace())
                     logprintf(vp->trace(), vp->comp()->log(),
                         "ARRAY STORE-SPREAD ELIMINATION   cold clone n%dn for call arg %d of n%dn deferred\n",
                         newArr->getGlobalIndex(), i, node->getGlobalIndex());
-                }
             }
         }
+    }
 
     if (vp->lastTimeThrough() && vp->_isGlobalPropagation) {
         CallNodeToGuardNodesMap *map = vp->_callNodeToGuardNodes;

@@ -6659,8 +6659,8 @@ void OMR::ValuePropagation::doDelayedTransformations()
                     ? TR::Node::lconst(newArr, slot->_offset)
                     : TR::Node::iconst(newArr, (int32_t)slot->_offset);
                 TR::Node *addrNode = TR::Node::create(newArr, is64 ? TR::aladd : TR::aiadd, 2, newArr, offsetNode);
-                TR::Node *valueNode = slot->_coldValue
-                    ? slot->_coldValue->duplicateTree()
+                TR::Node *valueNode = slot->_coldFillValue
+                    ? slot->_coldFillValue->duplicateTree()
                     : TR::Node::copy(slot->_value);
                 if (valueNode)
                     markHeapificationAllocs(valueNode);

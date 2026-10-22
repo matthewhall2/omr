@@ -3191,7 +3191,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                 if (!vp->_arraySlotValueMap.Locate(key, fwdIdx))
                     {
                     vp->_arraySlotValueMap.Add(key, forwardedValue);
-                    vp->_arraySlotColdValueMap.Add(key, coldFillValue);
+                    vp->_arraySlotColdValueMap.Add(key, coldFillValue != forwardedValue ? coldFillValue : NULL);
                     vp->_arraySlotStoreTTMap.Add(key, vp->_curTree);
                     if (vp->trace())
                         logprintf(vp->trace(), vp->comp()->log(),

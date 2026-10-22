@@ -3005,20 +3005,24 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
         return node;
 
     // Array store-spread elimination: record awrtbari slot stores; detect escapes.
-    // Array escapes: stored as value into a non-array-shadow indirect store.
-    if (node->getOpCode().isIndirect() && !node->getSymbolReference()->getSymbol()->isArrayShadowSymbol() && node->getNumChildren() >= 2) {
-        int32_t valueVN = vp->getValueNumber(node->getChild(1));
+    // Array escapes: the tracked anewarray is stored as the value into any wrtbar.
+    //   awrtbari: value=child(1); awrtbar: value=child(0).
+    int32_t valueChildIdx = node->getOpCode().isIndirect() ? 1 : 0;
+    if (node->getNumChildren() > valueChildIdx)
+        {
+        int32_t storeValueVN = vp->getValueNumber(node->getChild(valueChildIdx));
         CS2::HashIndex liveIdx;
-        if (vp->_liveAnewarrays.Locate(valueVN, liveIdx) && vp->_liveAnewarrays[liveIdx] != NULL) {
+        if (vp->_liveAnewarrays.Locate(storeValueVN, liveIdx) && vp->_liveAnewarrays[liveIdx] != NULL)
+            {
             TR::Node *arrNode = vp->_liveAnewarrays[liveIdx];
             if (vp->trace())
                 logprintf(vp->trace(), vp->comp()->log(),
-                    "ARRAY STORE-SPREAD ELIMINATION   anewarray n%dn escapes via indirect store n%dn value child — invalidating\n",
+                    "ARRAY STORE-SPREAD ELIMINATION   anewarray n%dn escapes via wrtbar n%dn value child — invalidating\n",
                     arrNode->getGlobalIndex(), node->getGlobalIndex());
             removeArrayForwardingEntries(vp, arrNode);
             vp->_liveAnewarrays[liveIdx] = NULL;
+            }
         }
-    }
 
     // awrtbari into a constant-offset slot of a tracked array.
     if (node->getOpCodeValue() == TR::awrtbari

@@ -2704,7 +2704,7 @@ TR::Node *constrainAstore(OMR::ValuePropagation *vp, TR::Node *node)
                         "ARRAY STORE-SPREAD ELIMINATION   recording local astore n%dn of anewarray VN=%u for deferred removal\n",
                         node->getGlobalIndex(), arrayVN);
             }
-        } else if (!node->getSymbol()->isAutoOrParm() && !isGuardFailureOrOSRBlock(vp)) {
+        } else if (!node->getSymbol()->isAutoOrParm()) {
             // Escape via store to a non-local; awrtbar/awrtbari go through constrainWrtBar.
             TR::Node *valueChild = node->getOpCode().isIndirect()
                 ? node->getSecondChild()

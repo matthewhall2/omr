@@ -3001,6 +3001,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
         }
     }
 
+    // do not do array store-spread elimination
     if (!node->getOpCode().isWrtBar() || !vp->_isGlobalPropagation || vp->_liveAnewarrays.IsEmpty())
         return node;
 
@@ -3025,11 +3026,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
         }
 
     // awrtbari into a constant-offset slot of a tracked array.
-    if (node->getOpCodeValue() == TR::awrtbari
-        && node->getSymbolReference()->getSymbol()->isArrayShadowSymbol()
-        && node->getNumChildren() >= 3
-        && node->getChild(0)->getOpCode().isArrayRef())
-        {
+    if (node->getOpCodeValue() == TR::awrtbari && node->getSymbolReference()->getSymbol()->isArrayShadowSymbol() && node->getNumChildren() >= 3 && node->getChild(0)->getOpCode().isArrayRef()) {
         TR::Node *addrChild  = node->getChild(0);
         TR::Node *storeBase  = addrChild->getFirstChild();
         TR::Node *offsetNode = addrChild->getSecondChild();
@@ -3039,17 +3036,14 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
 
         int32_t baseVN = vp->getValueNumber(storeBase);
         CS2::HashIndex liveIdx;
-        if (vp->_liveAnewarrays.Locate(baseVN, liveIdx)
-            && vp->_liveAnewarrays[liveIdx] != NULL)
-            {
+        if (vp->_liveAnewarrays.Locate(baseVN, liveIdx) && vp->_liveAnewarrays[liveIdx] != NULL) {
             TR::Node *arrNode  = vp->_liveAnewarrays[liveIdx];
             TR::Node *valueChild = node->getChild(1);
 
             TR::Node *forwardedValue = NULL;
             TR::Node *coldFillValue = NULL;
 
-            if (valueChild->getNumChildren() == 0)
-                {
+            if (valueChild->getNumChildren() == 0) {
                 // must have unique def
                 if (valueChild->getOpCode().isLoadVarDirect()
                     && valueChild->getOpCode().hasSymbolReference()
@@ -3058,49 +3052,39 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                     {
                     bool skipValue = true;
                     TR_UseDefInfo *useDefInfo = vp->_useDefInfo;
-                    if (useDefInfo)
-                        {
+                    if (useDefInfo) {
                         uint16_t valUseIdx = valueChild->getUseDefIndex();
-                        if (useDefInfo->isUseIndex(valUseIdx))
-                            {
+                        if (useDefInfo->isUseIndex(valUseIdx)) {
                             TR_UseDefInfo::BitVector valDefs(vp->comp()->allocator());
                             if (useDefInfo->getUseDef(valDefs, valUseIdx)
-                                && valDefs.PopulationCount() == 1)
-                                {
+                                && valDefs.PopulationCount() == 1) {
                                 TR_UseDefInfo::BitVector::Cursor vc(valDefs);
                                 vc.SetToFirstOne();
                                 if ((int32_t)vc >= useDefInfo->getFirstRealDefIndex())
                                     skipValue = false; // single non-entry def — safe
-                                }
                             }
                         }
-                    if (skipValue)
-                        {
+                    }
+                    if (skipValue) {
                         if (vp->trace())
                             logprintf(vp->trace(), vp->comp()->log(),
                                 "ARRAY STORE-SPREAD ELIMINATION   skip n%dn: value n%dn is aload of Auto with ambiguous def\n",
                                 node->getGlobalIndex(), valueChild->getGlobalIndex());
                         // valueChild is ambiguous; skip this slot entirely
-                        }
-                    else
-                        {
+                    } else {
                         if (vp->trace())
                             logprintf(vp->trace(), vp->comp()->log(),
                                 "ARRAY STORE-SPREAD ELIMINATION   value n%dn is aload of single-def Auto — forwarding directly\n",
                                 valueChild->getGlobalIndex());
                         forwardedValue = valueChild;
-                        }
                     }
-                else
-                    {
+                } else {
                     // parm aload, aconst, constRef aload — always safe to forward directly
                     forwardedValue = valueChild;
-                    }
+                }
                 // Leaf values are always safe to use directly in the cold block.
                 coldFillValue = forwardedValue;
-                }
-            else
-                {
+            } else {
                 // Non-leaf value: check if an existing auto temp already stores it in
                 // this block; if so reuse that temp, otherwise privatise into a new one.
                 TR::SymbolReference *tempSymRef = NULL;
@@ -3125,8 +3109,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                     }
 
                 // create new temp if not found
-                if (tempSymRef == NULL)
-                    {
+                if (tempSymRef == NULL) {
                     tempSymRef = vp->comp()->getSymRefTab()->createTemporary(
                         vp->comp()->getMethodSymbol(), TR::Address);
                     TR::Node *astoreNode = TR::Node::createWithSymRef(
@@ -3145,7 +3128,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                             "ARRAY STORE-SPREAD ELIMINATION   privatized non-leaf value n%dn into astore/aload temp #%d\n",
                             valueChild->getGlobalIndex(),
                             tempSymRef->getReferenceNumber());
-                    }
+                }
 
                 forwardedValue = TR::Node::createWithSymRef(TR::aload, 0, tempSymRef);
                 forwardedValue->setReferenceCount(1);
@@ -3154,10 +3137,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                 // constants or parameters, it is safe to re-evaluate it in the cold
                 // block.  Otherwise fall back to loading from the privatisation temp.
                 coldFillValue = forwardedValue;
-                if (valueChild->getOpCode().isCall()
-                    && valueChild->getSymbol()->castToMethodSymbol()->getRecognizedMethod()
-                            != TR::unknownMethod)
-                    {
+                if (valueChild->getOpCode().isCall() && valueChild->getSymbol()->castToMethodSymbol()->getRecognizedMethod() != TR::unknownMethod) {
                     bool allArgsConstOrParm = true;
                     int32_t firstArg = valueChild->getFirstArgumentIndex();
                     for (int32_t c = firstArg; c < valueChild->getNumChildren(); ++c) {
@@ -3167,19 +3147,17 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                             break;
                         }
                     }
-                    if (allArgsConstOrParm)
-                        {
+                    if (allArgsConstOrParm) {
                         coldFillValue = valueChild->duplicateTree();
                         if (vp->trace())
                             logprintf(vp->trace(), vp->comp()->log(),
                                 "ARRAY STORE-SPREAD ELIMINATION   cold template for n%dn is duplicated recognized call n%dn\n",
                                 valueChild->getGlobalIndex(), coldFillValue->getGlobalIndex());
-                        }
                     }
                 }
+            }
 
-            if (forwardedValue != NULL)
-                {
+            if (forwardedValue != NULL) {
                 int64_t offset = offsetNode->getOpCode().isLong()
                     ? offsetNode->getLongInt()
                     : (int64_t)offsetNode->getInt();
@@ -3210,9 +3188,9 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                     removeArrayForwardingEntries(vp, arrNode);
                     vp->_liveAnewarrays[liveIdx] = NULL;
                     }
-                }
             }
         }
+    }
 
     return node;
 }

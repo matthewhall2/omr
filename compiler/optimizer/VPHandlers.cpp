@@ -96,6 +96,7 @@ extern TR::Node *constrainChildren(OMR::ValuePropagation *vp, TR::Node *node);
 extern TR::Node *constrainVcall(OMR::ValuePropagation *vp, TR::Node *node);
 static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *node);
 static bool isGuardFailureBlock(TR::Block *block, TR::Compilation *comp);
+ static bool isGuardFailureOrOSRBlock(OMR::ValuePropagation *vp);
 
 static void checkForNonNegativeAndOverflowProperties(OMR::ValuePropagation *vp, TR::Node *node,
     TR::VPConstraint *constraint = NULL)
@@ -2711,10 +2712,7 @@ TR::Node *constrainAstore(OMR::ValuePropagation *vp, TR::Node *node)
                 }
             }
         else if (!node->getSymbol()->isAutoOrParm()
-            && !vp->_curBlock->isOSRCodeBlock()
-            && !vp->_curBlock->isOSRCatchBlock()
-            && !vp->_curBlock->isOSRInduceBlock()
-            && !isGuardFailureBlock(vp->_curBlock, vp->comp()))
+            && !isGuardFailureOrOSRBlock(vp))
             {
             // Escape via store to a non-local; awrtbar/awrtbari go through constrainWrtBar.
             TR::Node *valueChild = node->getOpCode().isIndirect()
@@ -4288,10 +4286,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                 && !disableArrayStoreSpreadElimination
                 && vp->_isGlobalPropagation
                 && sizeConstraint->getLowInt() == sizeConstraint->getHighInt()
-                && !vp->_curBlock->isOSRCodeBlock()
-                && !vp->_curBlock->isOSRCatchBlock()
-                && !vp->_curBlock->isOSRInduceBlock()
-                && !isGuardFailureBlock(vp->_curBlock, vp->comp())) {
+                && !isGuardFailureOrOSRBlock(vp)) {
                 // Only track warm-block anewarrays.  Cold-block clones created by constrainCall
                 // are real allocations; re-tracking them would grow the IL unboundedly.
                 int32_t arrayVN = vp->getValueNumber(node);
@@ -5177,6 +5172,15 @@ static bool isGuardFailureBlock(TR::Block *block, TR::Compilation *comp)
     return false;
 }
 
+static bool isGuardFailureOrOSRBlock(OMR::ValuePropagation *vp)
+    {
+    TR::Block *block = vp->_curBlock;
+    return block->isOSRCodeBlock()
+        || block->isOSRCatchBlock()
+        || block->isOSRInduceBlock()
+        || isGuardFailureBlock(block, vp->comp());
+    }
+
 TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
 {
     OMR::Logger *log = vp->comp()->log();
@@ -5185,10 +5189,7 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
     // Array store-spread elimination: handle escapes through call arguments.
     if (vp->_isGlobalPropagation && !vp->_liveAnewarrays.IsEmpty())
         {
-        bool inColdBlock = vp->_curBlock->isOSRCodeBlock()
-            || vp->_curBlock->isOSRCatchBlock()
-            || vp->_curBlock->isOSRInduceBlock()
-            || isGuardFailureBlock(vp->_curBlock, vp->comp());
+        bool inColdBlock = isGuardFailureOrOSRBlock(vp);
 
         int32_t firstArgIndex = node->getFirstArgumentIndex();
         for (int32_t i = firstArgIndex; i < node->getNumChildren(); ++i)

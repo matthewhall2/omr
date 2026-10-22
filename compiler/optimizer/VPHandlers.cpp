@@ -3166,8 +3166,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                                 | (uint64_t)(uint32_t)offset;
 
                 CS2::HashIndex fwdIdx;
-                if (!vp->_arraySlotValueMap.Locate(key, fwdIdx))
-                    {
+                if (!vp->_arraySlotValueMap.Locate(key, fwdIdx)) {
                     vp->_arraySlotValueMap.Add(key, forwardedValue);
                     vp->_arraySlotColdValueMap.Add(key, coldFillValue != forwardedValue ? coldFillValue : NULL);
                     vp->_arraySlotStoreTTMap.Add(key, vp->_curTree);
@@ -3176,9 +3175,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                             "ARRAY STORE-SPREAD ELIMINATION   mapped [anewarray n%dn VN=%d offset %lld] -> value n%dn\n",
                             arrNode->getGlobalIndex(), baseVN, (long long)offset,
                             forwardedValue->getGlobalIndex());
-                    }
-                else
-                    {
+                } else {
                     // Same slot written twice — purge all entries for this array.
                     if (vp->trace())
                         logprintf(vp->trace(), vp->comp()->log(),
@@ -3187,7 +3184,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                             node->getGlobalIndex());
                     removeArrayForwardingEntries(vp, arrNode);
                     vp->_liveAnewarrays[liveIdx] = NULL;
-                    }
+                }
             }
         }
     }

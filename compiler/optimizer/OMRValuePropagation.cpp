@@ -6710,10 +6710,10 @@ void OMR::ValuePropagation::doDelayedTransformations()
         CS2::HashIndex localListIdx;
         if (_forwardedLocalStoreTreesToRemove.Locate((uint32_t)arrayVN, localListIdx))
             {
-            TR_ScratchList<TR::TreeTop> *localList = _forwardedLocalStoreTreesToRemove[localListIdx];
-            if (localList != NULL)
+            TR_ScratchList<TR::TreeTop> *localStoreList = _forwardedLocalStoreTreesToRemove[localListIdx];
+            if (localStoreList != NULL)
                 {
-                ListIterator<TR::TreeTop> localIt(localList);
+                ListIterator<TR::TreeTop> localIt(localStoreList);
                 for (TR::TreeTop *localTT = localIt.getFirst(); localTT; localTT = localIt.getNext())
                     {
                     if (trace())
@@ -6753,16 +6753,16 @@ void OMR::ValuePropagation::doDelayedTransformations()
     _forwardedLocalStoreTreesToRemove.MakeEmpty();
     _forwardedAnewArrayTTs.MakeEmpty();
 
-    _arrayShadowForwardingMap.MakeEmpty();
-    _arrayShadowColdValueMap.MakeEmpty();
-    _arrayShadowStoreTTMap.MakeEmpty();
+    _arraySlotValueMap.MakeEmpty();
+    _arraySlotColdValueMap.MakeEmpty();
+    _arraySlotStoreTTMap.MakeEmpty();
     _liveAnewarrays.MakeEmpty();
 
     // Execute deferred aloadi rewrites (queued during the GVP walk; done here
     // so removeChildren cannot call setUseDefInfo(NULL) while the walk's cached
     // pointer is still live).
-    ListIterator<TR_Pair<TR::Node, TR::Node>> morphIt(&_pendingAlloadiMorphs);
-    for (TR_Pair<TR::Node, TR::Node> *p = morphIt.getFirst(); p; p = morphIt.getNext())
+    ListIterator<TR_Pair<TR::Node, TR::Node>> recreateList(&_pendingAloadiRecreates);
+    for (TR_Pair<TR::Node, TR::Node> *p = recreateList.getFirst(); p; p = recreateList.getNext())
         {
         TR::Node *load        = p->getKey();
         TR::Node *storedValue = p->getValue();
@@ -6785,7 +6785,7 @@ void OMR::ValuePropagation::doDelayedTransformations()
                 load->getGlobalIndex(),
                 storedValue->getOpCode().getName());
         }
-    _pendingAlloadiMorphs.init();
+    _pendingAloadiRecreates.init();
 
     ListIterator<TR_TreeTopNodePair> treesIt1(&_scalarizedArrayCopies);
     TR_TreeTopNodePair *scalarizedArrayCopy;

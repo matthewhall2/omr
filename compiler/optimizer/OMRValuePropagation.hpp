@@ -991,15 +991,15 @@ public:
 
     // (anewarray_VN << 32 | constant_byte_offset) -> leaf value written by the awrtbari.
     // Populated by constrainWrtBar; consumed by constrainAloadi.
-    CS2::HashTable<uint64_t, TR::Node *, TR::Allocator> _arrayShadowForwardingMap;
+    CS2::HashTable<uint64_t, TR::Node *, TR::Allocator> _arraySlotValueMap;
 
     // Same key -> cold-path expression template (duplicateTree of the stored value)
     // used to fill cold-block anewarray clones in doDelayedTransformations.
-    CS2::HashTable<uint64_t, TR::Node *, TR::Allocator> _arrayShadowColdValueMap;
+    CS2::HashTable<uint64_t, TR::Node *, TR::Allocator> _arraySlotColdValueMap;
 
     // Same key -> treetop of the awrtbari.  Set to NULL when a second store hits the
     // same slot, preventing removal of either store.
-    CS2::HashTable<uint64_t, TR::TreeTop *, TR::Allocator> _arrayShadowStoreTTMap;
+    CS2::HashTable<uint64_t, TR::TreeTop *, TR::Allocator> _arraySlotStoreTTMap;
 
     // arrayVN -> list of awrtbari treetops queued for deferred removal.  Nulled by
     // removeArrayForwardingEntries so in-flight escape detection can cancel them.
@@ -1060,7 +1060,7 @@ public:
     // whose opcode/symref to adopt.  Escape detection cancels a morph by setting key
     // to NULL.  Executed after the GVP walk completes to avoid use-def info teardown
     // while the walk's cached pointer is still live.
-    TR_ScratchList<TR_Pair<TR::Node, TR::Node>> _pendingAlloadiMorphs;
+    TR_ScratchList<TR_Pair<TR::Node, TR::Node>> _pendingAloadiRecreates;
 
     // Flags
     //

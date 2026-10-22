@@ -1888,8 +1888,8 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
 
         CS2::HashIndex idx;
         TR::Node *storedValue = NULL;
-        if (vp->_arrayShadowForwardingMap.Locate(key, idx))
-            storedValue = vp->_arrayShadowForwardingMap[idx];
+        if (vp->_arraySlotValueMap.Locate(key, idx))
+            storedValue = vp->_arraySlotValueMap[idx];
 
         if (storedValue && vp->trace())
             logprintf(vp->trace(), vp->comp()->log(),
@@ -1930,9 +1930,9 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
 
             // Queue the awrtbari for deferred removal
             CS2::HashIndex storeTTIdx;
-            if (vp->_arrayShadowStoreTTMap.Locate(key, storeTTIdx))
+            if (vp->_arraySlotStoreTTMap.Locate(key, storeTTIdx))
                 {
-                TR::TreeTop *storeTT = vp->_arrayShadowStoreTTMap[storeTTIdx];
+                TR::TreeTop *storeTT = vp->_arraySlotStoreTTMap[storeTTIdx];
                 if (storeTT != NULL)
                     {
                     if (vp->trace())
@@ -1953,7 +1953,7 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                     fwdList->add(storeTT);
 
                     // null so that multliple loads of the same array slot do not queue the same awrtbari for removal more than once
-                    vp->_arrayShadowStoreTTMap[storeTTIdx] = NULL;
+                    vp->_arraySlotStoreTTMap[storeTTIdx] = NULL;
 
                     // compressed-ref jvms have a compressedref TreeTop right after an address store
                     // we need to remove it as well if we are removing the store
@@ -1981,7 +1981,7 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
 
             // Defer the actual aloadi rewrite to doDelayedTransformations so that
             // escape detection can still cancel it by setting the pair key to NULL.
-            vp->_pendingAlloadiMorphs.add(
+            vp->_pendingAloadiRecreates.add(
                 new (vp->trHeapMemory()) TR_Pair<TR::Node, TR::Node>(node, storedValue));
             if (vp->trace())
                 logprintf(vp->trace(), vp->comp()->log(),
@@ -3188,11 +3188,11 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                                 | (uint64_t)(uint32_t)offset;
 
                 CS2::HashIndex fwdIdx;
-                if (!vp->_arrayShadowForwardingMap.Locate(key, fwdIdx))
+                if (!vp->_arraySlotValueMap.Locate(key, fwdIdx))
                     {
-                    vp->_arrayShadowForwardingMap.Add(key, forwardedValue);
-                    vp->_arrayShadowColdValueMap.Add(key, coldTemplate);
-                    vp->_arrayShadowStoreTTMap.Add(key, vp->_curTree);
+                    vp->_arraySlotValueMap.Add(key, forwardedValue);
+                    vp->_arraySlotColdValueMap.Add(key, coldTemplate);
+                    vp->_arraySlotStoreTTMap.Add(key, vp->_curTree);
                     if (vp->trace())
                         logprintf(vp->trace(), vp->comp()->log(),
                             "ARRAY STORE-SPREAD ELIMINATION   mapped [anewarray n%dn VN=%d offset %lld] -> value n%dn\n",
@@ -4173,10 +4173,10 @@ static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *ar
 
     // Collect all slot keys whose upper 32 bits match arrayVN.
     TR::list<uint64_t, TR::Region &> toRemove(vp->comp()->trMemory()->currentStackRegion());
-    auto fwdCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(vp->_arrayShadowForwardingMap);
+    auto fwdCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(vp->_arraySlotValueMap);
     for (fwdCursor.SetToFirst(); fwdCursor.Valid(); fwdCursor.SetToNext())
         {
-        uint64_t k = vp->_arrayShadowForwardingMap.KeyAt(fwdCursor);
+        uint64_t k = vp->_arraySlotValueMap.KeyAt(fwdCursor);
         if ((k >> 32) == arrayVN)
             toRemove.push_back(k);
         }
@@ -4194,25 +4194,25 @@ static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *ar
         {
         CS2::HashIndex idx;
         TR::Node *cancelledValue = NULL;
-        if (vp->_arrayShadowForwardingMap.Locate(k, idx))
+        if (vp->_arraySlotValueMap.Locate(k, idx))
             {
-            cancelledValue = vp->_arrayShadowForwardingMap[idx];
-            vp->_arrayShadowForwardingMap[idx] = NULL;
+            cancelledValue = vp->_arraySlotValueMap[idx];
+            vp->_arraySlotValueMap[idx] = NULL;
             }
 
         CS2::HashIndex coldIdx;
-        if (vp->_arrayShadowColdValueMap.Locate(k, coldIdx))
-            vp->_arrayShadowColdValueMap[coldIdx] = NULL;
+        if (vp->_arraySlotColdValueMap.Locate(k, coldIdx))
+            vp->_arraySlotColdValueMap[coldIdx] = NULL;
 
         CS2::HashIndex storeIdx;
-        if (vp->_arrayShadowStoreTTMap.Locate(k, storeIdx))
-            vp->_arrayShadowStoreTTMap[storeIdx] = NULL;
+        if (vp->_arraySlotStoreTTMap.Locate(k, storeIdx))
+            vp->_arraySlotStoreTTMap[storeIdx] = NULL;
 
         // Cancel any pending aloadi morph that used a value from this slot.
         if (cancelledValue != NULL)
             {
-            ListIterator<TR_Pair<TR::Node, TR::Node>> morphIt(&vp->_pendingAlloadiMorphs);
-            for (TR_Pair<TR::Node, TR::Node> *p = morphIt.getFirst(); p; p = morphIt.getNext())
+            ListIterator<TR_Pair<TR::Node, TR::Node>> recreateList(&vp->_pendingAloadiRecreates);
+            for (TR_Pair<TR::Node, TR::Node> *p = recreateList.getFirst(); p; p = recreateList.getNext())
                 {
                 if (p->getKey() != NULL && p->getValue() == cancelledValue)
                     {
@@ -5228,18 +5228,18 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
                         newArrTT, vp->_curTree, node, i, arrNode,
                         origArrayVN, vp->trMemory());
                 auto slotCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(
-                    vp->_arrayShadowForwardingMap);
+                    vp->_arraySlotValueMap);
                 for (slotCursor.SetToFirst(); slotCursor.Valid(); slotCursor.SetToNext())
                     {
-                    uint64_t slotKey = vp->_arrayShadowForwardingMap.KeyAt(slotCursor);
-                    TR::Node *slotValue = vp->_arrayShadowForwardingMap[slotCursor];
+                    uint64_t slotKey = vp->_arraySlotValueMap.KeyAt(slotCursor);
+                    TR::Node *slotValue = vp->_arraySlotValueMap[slotCursor];
                     if ((slotKey >> 32) != origArrayVN || slotValue == NULL)
                         continue;
                     int64_t slotOffset = (int64_t)(int32_t)(uint32_t)(slotKey & 0xffffffffu);
                     TR::Node *coldVal = NULL;
                     CS2::HashIndex coldIdx;
-                    if (vp->_arrayShadowColdValueMap.Locate(slotKey, coldIdx))
-                        coldVal = vp->_arrayShadowColdValueMap[coldIdx];
+                    if (vp->_arraySlotColdValueMap.Locate(slotKey, coldIdx))
+                        coldVal = vp->_arraySlotColdValueMap[coldIdx];
                     rebuild->_slots.add(new (vp->trHeapMemory()) OMR::ValuePropagation::ForwardedSlot(
                         slotOffset, slotValue, coldVal));
                     }

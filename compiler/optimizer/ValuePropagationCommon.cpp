@@ -144,13 +144,13 @@ OMR::ValuePropagation::ValuePropagation(TR::OptimizationManager *manager)
     , _constNodeInfo(comp()->allocator())
     , _liveAnewarrays(comp()->allocator())
     , _forwardedAnewArrayTTs(comp()->allocator())
-    , _arrayShadowForwardingMap(comp()->allocator())
-    , _arrayShadowColdValueMap(comp()->allocator())
-    , _arrayShadowStoreTTMap(comp()->allocator())
+    , _arraySlotValueMap(comp()->allocator())
+    , _arraySlotColdValueMap(comp()->allocator())
+    , _arraySlotStoreTTMap(comp()->allocator())
     , _forwardedStoreTreesToRemove(comp()->allocator())
     , _forwardedLocalStoreTreesToRemove(comp()->allocator())
     , _coldArrayRebuilds(trMemory())
-    , _pendingAlloadiMorphs(trMemory())
+    , _pendingAloadiRecreates(trMemory())
 {
     // DANGER !!!
     // Virtual methods on ValuePropagation should only be called when the most derived class of VP's

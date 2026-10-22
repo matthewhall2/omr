@@ -3001,220 +3001,215 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
         }
     }
 
+    if (!node->getOpCode().isWrtBar() || !vp->_isGlobalPropagation || vp->_liveAnewarrays.IsEmpty())
+        return node;
+
     // Array store-spread elimination: record awrtbari slot stores; detect escapes.
-    if (node->getOpCode().isWrtBar() && vp->_isGlobalPropagation && !vp->_liveAnewarrays.IsEmpty())
+    // Array escapes: stored as value into a non-array-shadow indirect store.
+    if (node->getOpCode().isIndirect() && !node->getSymbolReference()->getSymbol()->isArrayShadowSymbol() && node->getNumChildren() >= 2) {
+        int32_t valueVN = vp->getValueNumber(node->getChild(1));
+        CS2::HashIndex liveIdx;
+        if (vp->_liveAnewarrays.Locate(valueVN, liveIdx) && vp->_liveAnewarrays[liveIdx] != NULL) {
+            TR::Node *arrNode = vp->_liveAnewarrays[liveIdx];
+            if (vp->trace())
+                logprintf(vp->trace(), vp->comp()->log(),
+                    "ARRAY STORE-SPREAD ELIMINATION   anewarray n%dn escapes via indirect store n%dn value child — invalidating\n",
+                    arrNode->getGlobalIndex(), node->getGlobalIndex());
+            removeArrayForwardingEntries(vp, arrNode);
+            vp->_liveAnewarrays[liveIdx] = NULL;
+        }
+    }
+
+    // awrtbari into a constant-offset slot of a tracked array.
+    if (node->getOpCodeValue() == TR::awrtbari
+        && node->getSymbolReference()->getSymbol()->isArrayShadowSymbol()
+        && node->getNumChildren() >= 3
+        && node->getChild(0)->getOpCode().isArrayRef())
         {
-        // Array escapes: stored as value into a non-array-shadow indirect store.
-        if (node->getOpCode().isIndirect()
-            && !node->getSymbolReference()->getSymbol()->isArrayShadowSymbol()
-            && node->getNumChildren() >= 2)
-            {
-            int32_t valueVN = vp->getValueNumber(node->getChild(1));
-            CS2::HashIndex liveIdx;
-            if (vp->_liveAnewarrays.Locate(valueVN, liveIdx)
-                && vp->_liveAnewarrays[liveIdx] != NULL)
-                {
-                TR::Node *arrNode = vp->_liveAnewarrays[liveIdx];
-                if (vp->trace())
-                    logprintf(vp->trace(), vp->comp()->log(),
-                        "ARRAY STORE-SPREAD ELIMINATION   anewarray n%dn escapes via indirect store n%dn value child — invalidating\n",
-                        arrNode->getGlobalIndex(), node->getGlobalIndex());
-                removeArrayForwardingEntries(vp, arrNode);
-                vp->_liveAnewarrays[liveIdx] = NULL;
-                }
-            }
+        TR::Node *addrChild  = node->getChild(0);
+        TR::Node *storeBase  = addrChild->getFirstChild();
+        TR::Node *offsetNode = addrChild->getSecondChild();
 
-        // awrtbari into a constant-offset slot of a tracked array.
-        if (node->getOpCodeValue() == TR::awrtbari
-            && node->getSymbolReference()->getSymbol()->isArrayShadowSymbol()
-            && node->getNumChildren() >= 3
-            && node->getChild(0)->getOpCode().isArrayRef())
-            {
-            TR::Node *addrChild  = node->getChild(0);
-            TR::Node *storeBase  = addrChild->getFirstChild();
-            TR::Node *offsetNode = addrChild->getSecondChild();
+        if (!offsetNode->getOpCode().isLoadConst())
+            return node;
 
-            if (offsetNode->getOpCode().isLoadConst())
+        int32_t baseVN = vp->getValueNumber(storeBase);
+        CS2::HashIndex liveIdx;
+        if (vp->_liveAnewarrays.Locate(baseVN, liveIdx)
+            && vp->_liveAnewarrays[liveIdx] != NULL)
+            {
+            TR::Node *arrNode  = vp->_liveAnewarrays[liveIdx];
+            TR::Node *valueChild = node->getChild(1);
+
+            TR::Node *forwardedValue = NULL;
+            TR::Node *coldTemplate = NULL;
+
+            if (valueChild->getNumChildren() == 0)
                 {
-                int32_t baseVN = vp->getValueNumber(storeBase);
-                CS2::HashIndex liveIdx;
-                if (vp->_liveAnewarrays.Locate(baseVN, liveIdx)
-                    && vp->_liveAnewarrays[liveIdx] != NULL)
+                // must have unique def
+                if (valueChild->getOpCode().isLoadVarDirect()
+                    && valueChild->getOpCode().hasSymbolReference()
+                    && valueChild->getSymbol()->isAutoOrParm()
+                    && !valueChild->getSymbol()->isParm())
                     {
-                    TR::Node *arrNode  = vp->_liveAnewarrays[liveIdx];
-                    TR::Node *valueChild = node->getChild(1);
-
-                    TR::Node *forwardedValue = NULL;
-                    TR::Node *coldTemplate = NULL;
-
-                    if (valueChild->getNumChildren() == 0)
+                    bool skipValue = true;
+                    TR_UseDefInfo *useDefInfo = vp->_useDefInfo;
+                    if (useDefInfo)
                         {
-                        // must have unique def
-                        if (valueChild->getOpCode().isLoadVarDirect()
-                            && valueChild->getOpCode().hasSymbolReference()
-                            && valueChild->getSymbol()->isAutoOrParm()
-                            && !valueChild->getSymbol()->isParm())
+                        uint16_t valUseIdx = valueChild->getUseDefIndex();
+                        if (useDefInfo->isUseIndex(valUseIdx))
                             {
-                            bool skipValue = true;
-                            TR_UseDefInfo *useDefInfo = vp->_useDefInfo;
-                            if (useDefInfo)
+                            TR_UseDefInfo::BitVector valDefs(vp->comp()->allocator());
+                            if (useDefInfo->getUseDef(valDefs, valUseIdx)
+                                && valDefs.PopulationCount() == 1)
                                 {
-                                uint16_t valUseIdx = valueChild->getUseDefIndex();
-                                if (useDefInfo->isUseIndex(valUseIdx))
-                                    {
-                                    TR_UseDefInfo::BitVector valDefs(vp->comp()->allocator());
-                                    if (useDefInfo->getUseDef(valDefs, valUseIdx)
-                                        && valDefs.PopulationCount() == 1)
-                                        {
-                                        TR_UseDefInfo::BitVector::Cursor vc(valDefs);
-                                        vc.SetToFirstOne();
-                                        if ((int32_t)vc >= useDefInfo->getFirstRealDefIndex())
-                                            skipValue = false; // single non-entry def — safe
-                                        }
-                                    }
-                                }
-                            if (skipValue)
-                                {
-                                if (vp->trace())
-                                    logprintf(vp->trace(), vp->comp()->log(),
-                                        "ARRAY STORE-SPREAD ELIMINATION   skip n%dn: value n%dn is aload of Auto with ambiguous def\n",
-                                        node->getGlobalIndex(), valueChild->getGlobalIndex());
-                                // valueChild is ambiguous; skip this slot entirely
-                                }
-                            else
-                                {
-                                if (vp->trace())
-                                    logprintf(vp->trace(), vp->comp()->log(),
-                                        "ARRAY STORE-SPREAD ELIMINATION   value n%dn is aload of single-def Auto — forwarding directly\n",
-                                        valueChild->getGlobalIndex());
-                                forwardedValue = valueChild;
+                                TR_UseDefInfo::BitVector::Cursor vc(valDefs);
+                                vc.SetToFirstOne();
+                                if ((int32_t)vc >= useDefInfo->getFirstRealDefIndex())
+                                    skipValue = false; // single non-entry def — safe
                                 }
                             }
-                        else
-                            {
-                            // parm aload, aconst, constRef aload — always safe to forward directly
-                            forwardedValue = valueChild;
-                            }
-                        // Leaf values are always safe to use directly in the cold block.
-                        coldTemplate = forwardedValue;
+                        }
+                    if (skipValue)
+                        {
+                        if (vp->trace())
+                            logprintf(vp->trace(), vp->comp()->log(),
+                                "ARRAY STORE-SPREAD ELIMINATION   skip n%dn: value n%dn is aload of Auto with ambiguous def\n",
+                                node->getGlobalIndex(), valueChild->getGlobalIndex());
+                        // valueChild is ambiguous; skip this slot entirely
                         }
                     else
                         {
-                        // Non-leaf value: check if an existing auto temp already stores it in
-                        // this block; if so reuse that temp, otherwise privatise into a new one.
-                        TR::SymbolReference *tempSymRef = NULL;
-                        for (TR::TreeTop *prevTT = vp->_curTree->getPrevTreeTop();
-                             prevTT != NULL && prevTT->getNode()->getOpCodeValue() != TR::BBStart;
-                             prevTT = prevTT->getPrevTreeTop())
-                            {
-                            TR::Node *prevNode = prevTT->getNode();
-                            if (prevNode->getOpCode().isStoreDirect()
-                                && prevNode->getOpCode().hasSymbolReference()
-                                && prevNode->getSymbol()->isAutoOrParm()
-                                && !prevNode->getSymbol()->isParm()
-                                && prevNode->getFirstChild() == valueChild)
-                                {
-                                tempSymRef = prevNode->getSymbolReference();
-                                if (vp->trace())
-                                    logprintf(vp->trace(), vp->comp()->log(),
-                                        "ARRAY STORE-SPREAD ELIMINATION   reusing existing temp #%d for non-leaf value n%dn\n",
-                                        tempSymRef->getReferenceNumber(),
-                                        valueChild->getGlobalIndex());
-                                break;
-                                }
-                            if (prevNode->getOpCode().isCall()
-                                || prevNode->getOpCode().isBranch()
-                                || prevNode->getOpCode().isReturn())
-                                break;
-                            }
-
-                        if (tempSymRef == NULL)
-                            {
-                            tempSymRef = vp->comp()->getSymRefTab()->createTemporary(
-                                vp->comp()->getMethodSymbol(), TR::Address);
-                            TR::Node *astoreNode = TR::Node::createWithSymRef(
-                                TR::astore, 1, 1, valueChild, tempSymRef);
-                            TR::TreeTop *astoreTT = TR::TreeTop::create(
-                                vp->comp(), astoreNode, NULL, NULL);
-                            vp->_curTree->insertBefore(astoreTT);
-
-                            TR::Node *tempLoad = TR::Node::createWithSymRef(TR::aload, 0, tempSymRef);
-                            tempLoad->setReferenceCount(1);
-                            node->setAndIncChild(1, tempLoad);
-                            valueChild->decReferenceCount();
-
-                            if (vp->trace())
-                                logprintf(vp->trace(), vp->comp()->log(),
-                                    "ARRAY STORE-SPREAD ELIMINATION   privatized non-leaf value n%dn into astore/aload temp #%d\n",
-                                    valueChild->getGlobalIndex(),
-                                    tempSymRef->getReferenceNumber());
-                            }
-
-                        forwardedValue = TR::Node::createWithSymRef(TR::aload, 0, tempSymRef);
-                        forwardedValue->setReferenceCount(1);
-
-                        // If valueChild is a recognized pure call whose arguments are all
-                        // constants or parameters, it is safe to re-evaluate it in the cold
-                        // block.  Otherwise fall back to loading from the privatisation temp.
-                        coldTemplate = forwardedValue;
-                        if (valueChild->getOpCode().isCall()
-                            && valueChild->getSymbol()->castToMethodSymbol()->getRecognizedMethod()
-                                   != TR::unknownMethod)
-                            {
-                            bool allArgsConstOrParm = true;
-                            int32_t firstArg = valueChild->getFirstArgumentIndex();
-                            for (int32_t c = firstArg; c < valueChild->getNumChildren(); ++c)
-                                {
-                                TR::Node *arg = valueChild->getChild(c);
-                                if (!arg->getOpCode().isLoadConst()
-                                    && !(arg->getOpCode().isLoadVarDirect()
-                                         && arg->getSymbol()->isParm()))
-                                    { allArgsConstOrParm = false; break; }
-                                }
-                            if (allArgsConstOrParm)
-                                {
-                                coldTemplate = valueChild->duplicateTree();
-                                if (vp->trace())
-                                    logprintf(vp->trace(), vp->comp()->log(),
-                                        "ARRAY STORE-SPREAD ELIMINATION   cold template for n%dn is duplicated recognized call n%dn\n",
-                                        valueChild->getGlobalIndex(), coldTemplate->getGlobalIndex());
-                                }
-                            }
+                        if (vp->trace())
+                            logprintf(vp->trace(), vp->comp()->log(),
+                                "ARRAY STORE-SPREAD ELIMINATION   value n%dn is aload of single-def Auto — forwarding directly\n",
+                                valueChild->getGlobalIndex());
+                        forwardedValue = valueChild;
                         }
-
-                    if (forwardedValue != NULL)
+                    }
+                else
+                    {
+                    // parm aload, aconst, constRef aload — always safe to forward directly
+                    forwardedValue = valueChild;
+                    }
+                // Leaf values are always safe to use directly in the cold block.
+                coldTemplate = forwardedValue;
+                }
+            else
+                {
+                // Non-leaf value: check if an existing auto temp already stores it in
+                // this block; if so reuse that temp, otherwise privatise into a new one.
+                TR::SymbolReference *tempSymRef = NULL;
+                for (TR::TreeTop *prevTT = vp->_curTree->getPrevTreeTop();
+                        prevTT != NULL && prevTT->getNode()->getOpCodeValue() != TR::BBStart;
+                        prevTT = prevTT->getPrevTreeTop())
+                    {
+                    TR::Node *prevNode = prevTT->getNode();
+                    if (prevNode->getOpCode().isStoreDirect()
+                        && prevNode->getOpCode().hasSymbolReference()
+                        && prevNode->getSymbol()->isAutoOrParm()
+                        && !prevNode->getSymbol()->isParm()
+                        && prevNode->getFirstChild() == valueChild)
                         {
-                        int64_t offset = offsetNode->getOpCode().isLong()
-                            ? offsetNode->getLongInt()
-                            : (int64_t)offsetNode->getInt();
-
-                        uint64_t key = ((uint64_t)(uint32_t)baseVN << 32)
-                                       | (uint64_t)(uint32_t)offset;
-
-                        CS2::HashIndex fwdIdx;
-                        if (!vp->_arrayShadowForwardingMap.Locate(key, fwdIdx))
-                            {
-                            vp->_arrayShadowForwardingMap.Add(key, forwardedValue);
-                            vp->_arrayShadowColdValueMap.Add(key, coldTemplate);
-                            vp->_arrayShadowStoreTTMap.Add(key, vp->_curTree);
-                            if (vp->trace())
-                                logprintf(vp->trace(), vp->comp()->log(),
-                                    "ARRAY STORE-SPREAD ELIMINATION   mapped [anewarray n%dn VN=%d offset %lld] -> value n%dn\n",
-                                    arrNode->getGlobalIndex(), baseVN, (long long)offset,
-                                    forwardedValue->getGlobalIndex());
-                            }
-                        else
-                            {
-                            // Same slot written twice — purge all entries for this array.
-                            if (vp->trace())
-                                logprintf(vp->trace(), vp->comp()->log(),
-                                    "ARRAY STORE-SPREAD ELIMINATION   slot [anewarray n%dn offset %lld] written twice (n%dn) — purging\n",
-                                    arrNode->getGlobalIndex(), (long long)offset,
-                                    node->getGlobalIndex());
-                            removeArrayForwardingEntries(vp, arrNode);
-                            vp->_liveAnewarrays[liveIdx] = NULL;
-                            }
+                        tempSymRef = prevNode->getSymbolReference();
+                        if (vp->trace())
+                            logprintf(vp->trace(), vp->comp()->log(),
+                                "ARRAY STORE-SPREAD ELIMINATION   reusing existing temp #%d for non-leaf value n%dn\n",
+                                tempSymRef->getReferenceNumber(),
+                                valueChild->getGlobalIndex());
+                        break;
                         }
+                    if (prevNode->getOpCode().isCall()
+                        || prevNode->getOpCode().isBranch()
+                        || prevNode->getOpCode().isReturn())
+                        break;
+                    }
+
+                if (tempSymRef == NULL)
+                    {
+                    tempSymRef = vp->comp()->getSymRefTab()->createTemporary(
+                        vp->comp()->getMethodSymbol(), TR::Address);
+                    TR::Node *astoreNode = TR::Node::createWithSymRef(
+                        TR::astore, 1, 1, valueChild, tempSymRef);
+                    TR::TreeTop *astoreTT = TR::TreeTop::create(
+                        vp->comp(), astoreNode, NULL, NULL);
+                    vp->_curTree->insertBefore(astoreTT);
+
+                    TR::Node *tempLoad = TR::Node::createWithSymRef(TR::aload, 0, tempSymRef);
+                    tempLoad->setReferenceCount(1);
+                    node->setAndIncChild(1, tempLoad);
+                    valueChild->decReferenceCount();
+
+                    if (vp->trace())
+                        logprintf(vp->trace(), vp->comp()->log(),
+                            "ARRAY STORE-SPREAD ELIMINATION   privatized non-leaf value n%dn into astore/aload temp #%d\n",
+                            valueChild->getGlobalIndex(),
+                            tempSymRef->getReferenceNumber());
+                    }
+
+                forwardedValue = TR::Node::createWithSymRef(TR::aload, 0, tempSymRef);
+                forwardedValue->setReferenceCount(1);
+
+                // If valueChild is a recognized pure call whose arguments are all
+                // constants or parameters, it is safe to re-evaluate it in the cold
+                // block.  Otherwise fall back to loading from the privatisation temp.
+                coldTemplate = forwardedValue;
+                if (valueChild->getOpCode().isCall()
+                    && valueChild->getSymbol()->castToMethodSymbol()->getRecognizedMethod()
+                            != TR::unknownMethod)
+                    {
+                    bool allArgsConstOrParm = true;
+                    int32_t firstArg = valueChild->getFirstArgumentIndex();
+                    for (int32_t c = firstArg; c < valueChild->getNumChildren(); ++c)
+                        {
+                        TR::Node *arg = valueChild->getChild(c);
+                        if (!arg->getOpCode().isLoadConst()
+                            && !(arg->getOpCode().isLoadVarDirect()
+                                    && arg->getSymbol()->isParm()))
+                            { allArgsConstOrParm = false; break; }
+                        }
+                    if (allArgsConstOrParm)
+                        {
+                        coldTemplate = valueChild->duplicateTree();
+                        if (vp->trace())
+                            logprintf(vp->trace(), vp->comp()->log(),
+                                "ARRAY STORE-SPREAD ELIMINATION   cold template for n%dn is duplicated recognized call n%dn\n",
+                                valueChild->getGlobalIndex(), coldTemplate->getGlobalIndex());
+                        }
+                    }
+                }
+
+            if (forwardedValue != NULL)
+                {
+                int64_t offset = offsetNode->getOpCode().isLong()
+                    ? offsetNode->getLongInt()
+                    : (int64_t)offsetNode->getInt();
+
+                uint64_t key = ((uint64_t)(uint32_t)baseVN << 32)
+                                | (uint64_t)(uint32_t)offset;
+
+                CS2::HashIndex fwdIdx;
+                if (!vp->_arrayShadowForwardingMap.Locate(key, fwdIdx))
+                    {
+                    vp->_arrayShadowForwardingMap.Add(key, forwardedValue);
+                    vp->_arrayShadowColdValueMap.Add(key, coldTemplate);
+                    vp->_arrayShadowStoreTTMap.Add(key, vp->_curTree);
+                    if (vp->trace())
+                        logprintf(vp->trace(), vp->comp()->log(),
+                            "ARRAY STORE-SPREAD ELIMINATION   mapped [anewarray n%dn VN=%d offset %lld] -> value n%dn\n",
+                            arrNode->getGlobalIndex(), baseVN, (long long)offset,
+                            forwardedValue->getGlobalIndex());
+                    }
+                else
+                    {
+                    // Same slot written twice — purge all entries for this array.
+                    if (vp->trace())
+                        logprintf(vp->trace(), vp->comp()->log(),
+                            "ARRAY STORE-SPREAD ELIMINATION   slot [anewarray n%dn offset %lld] written twice (n%dn) — purging\n",
+                            arrNode->getGlobalIndex(), (long long)offset,
+                            node->getGlobalIndex());
+                    removeArrayForwardingEntries(vp, arrNode);
+                    vp->_liveAnewarrays[liveIdx] = NULL;
                     }
                 }
             }

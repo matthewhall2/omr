@@ -2685,7 +2685,6 @@ TR::Node *constrainAstore(OMR::ValuePropagation *vp, TR::Node *node)
     // Array store-spread elimination.
     if (vp->_isGlobalPropagation && !vp->_liveAnewarrays.IsEmpty())
         {
-        static bool disableEscapeAnalysis = feGetEnv("TR_disableEscapeAnalysisInStoreSpreadEliminiation") != NULL;
         if (node->getSymbol()->isAutoOrParm() && !node->getOpCode().isIndirect())
             {
             // Track direct stores of the anewarray to a local — dead once the allocation is eliminated.
@@ -2711,8 +2710,7 @@ TR::Node *constrainAstore(OMR::ValuePropagation *vp, TR::Node *node)
                         node->getGlobalIndex(), arrayVN);
                 }
             }
-        else if (!disableEscapeAnalysis
-            && !node->getSymbol()->isAutoOrParm()
+        else if (!node->getSymbol()->isAutoOrParm()
             && !vp->_curBlock->isOSRCodeBlock()
             && !vp->_curBlock->isOSRCatchBlock()
             && !vp->_curBlock->isOSRInduceBlock()
@@ -3292,9 +3290,7 @@ TR::Node *constrainReturn(OMR::ValuePropagation *vp, TR::Node *node)
     constrainChildren(vp, node);
 
     // Array store-spread elimination: escape via areturn.
-    static bool disableEscapeAnalysis = feGetEnv("TR_disableEscapeAnalysisInStoreSpreadEliminiation") != NULL;
-    if (!disableEscapeAnalysis
-        && vp->_isGlobalPropagation
+    if (vp->_isGlobalPropagation
         && !vp->_liveAnewarrays.IsEmpty()
         && node->getNumChildren() >= 1
         && node->getDataType() == TR::Address)
@@ -4295,8 +4291,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                 && !vp->_curBlock->isOSRCodeBlock()
                 && !vp->_curBlock->isOSRCatchBlock()
                 && !vp->_curBlock->isOSRInduceBlock()
-                && !isGuardFailureBlock(vp->_curBlock, vp->comp()))
-                {
+                && !isGuardFailureBlock(vp->_curBlock, vp->comp())) {
                 // Only track warm-block anewarrays.  Cold-block clones created by constrainCall
                 // are real allocations; re-tracking them would grow the IL unboundedly.
                 int32_t arrayVN = vp->getValueNumber(node);
@@ -4311,10 +4306,9 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             node->getGlobalIndex(), arrayVN);
                     }
                 }
-            else
-                {
+            else if (arrayClass) {
                 node->setAllocationCanBeRemoved(true);
-                }
+            }
         }
     }
 
@@ -5191,90 +5185,86 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
     // Array store-spread elimination: handle escapes through call arguments.
     if (vp->_isGlobalPropagation && !vp->_liveAnewarrays.IsEmpty())
         {
-        static bool disableEscapeAnalysis = feGetEnv("TR_disableEscapeAnalysisInStoreSpreadEliminiation") != NULL;
         bool inColdBlock = vp->_curBlock->isOSRCodeBlock()
             || vp->_curBlock->isOSRCatchBlock()
             || vp->_curBlock->isOSRInduceBlock()
             || isGuardFailureBlock(vp->_curBlock, vp->comp());
 
-        if (!disableEscapeAnalysis)
+        int32_t firstArgIndex = node->getFirstArgumentIndex();
+        for (int32_t i = firstArgIndex; i < node->getNumChildren(); ++i)
             {
-            int32_t firstArgIndex = node->getFirstArgumentIndex();
-            for (int32_t i = firstArgIndex; i < node->getNumChildren(); ++i)
+            int32_t argVN = vp->getValueNumber(node->getChild(i));
+            CS2::HashIndex liveIdx;
+            if (!vp->_liveAnewarrays.Locate(argVN, liveIdx)
+                || vp->_liveAnewarrays[liveIdx] == NULL)
+                continue;
+
+            TR::Node *arrNode = vp->_liveAnewarrays[liveIdx];
+
+            if (!inColdBlock)
                 {
-                int32_t argVN = vp->getValueNumber(node->getChild(i));
-                CS2::HashIndex liveIdx;
-                if (!vp->_liveAnewarrays.Locate(argVN, liveIdx)
-                    || vp->_liveAnewarrays[liveIdx] == NULL)
-                    continue;
+                if (vp->trace())
+                    logprintf(vp->trace(), vp->comp()->log(),
+                        "VP ARRAY FORWARD:   anewarray n%dn escapes via call arg %d of n%dn — invalidating\n",
+                        arrNode->getGlobalIndex(), i, node->getGlobalIndex());
+                removeArrayForwardingEntries(vp, arrNode);
+                vp->_liveAnewarrays[liveIdx] = NULL;
+                }
+            else
+                {
+                // The call is in a cold (guard-failure/OSR) block.  Clone a fresh
+                // anewarray here and redirect the call arg to it, preserving the
+                // warm-path array for elimination.
+                if (vp->trace())
+                    logprintf(vp->trace(), vp->comp()->log(),
+                        "VP ARRAY FORWARD:   anewarray n%dn escapes via call arg %d of n%dn in cold block"
+                        " — cloning fresh anewarray\n",
+                        arrNode->getGlobalIndex(), i, node->getGlobalIndex());
 
-                TR::Node *arrNode = vp->_liveAnewarrays[liveIdx];
+                TR::Node *origSize = arrNode->getFirstChild();
+                TR::Node *origType = arrNode->getSecondChild();
+                TR::Node *newSize  = TR::Node::create(arrNode, TR::iconst, 0, origSize->getInt());
+                TR::Node *newType  = TR::Node::copy(origType);
+                TR::SymbolReference *symRef
+                    = vp->comp()->getSymRefTab()->findOrCreateANewArraySymbolRef(
+                        origType->getSymbolReference()->getOwningMethodSymbol(vp->comp()));
+                TR::Node *newArr = TR::Node::createWithSymRef(arrNode, TR::anewarray, 2, symRef);
+                newArr->setHeapificationAlloc(true);
+                newArr->setAndIncChild(0, newSize);
+                newArr->setAndIncChild(1, newType);
 
-                if (!inColdBlock)
+                // Defer insertion and arg redirect to doDelayedTransformations,
+                // which skips this rebuild if the warm array was invalidated later.
+                TR::TreeTop *newArrTT = OMR::TreeTop::create(
+                    vp->comp(), TR::Node::create(TR::treetop, 1, newArr));
+
+                uint32_t origArrayVN = (uint32_t)argVN;
+                OMR::ValuePropagation::ColdArrayRebuild *rebuild
+                    = new (vp->trHeapMemory()) OMR::ValuePropagation::ColdArrayRebuild(
+                        newArrTT, vp->_curTree, node, i, arrNode,
+                        origArrayVN, vp->trMemory());
+                auto slotCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(
+                    vp->_arrayShadowForwardingMap);
+                for (slotCursor.SetToFirst(); slotCursor.Valid(); slotCursor.SetToNext())
                     {
-                    if (vp->trace())
-                        logprintf(vp->trace(), vp->comp()->log(),
-                            "VP ARRAY FORWARD:   anewarray n%dn escapes via call arg %d of n%dn — invalidating\n",
-                            arrNode->getGlobalIndex(), i, node->getGlobalIndex());
-                    removeArrayForwardingEntries(vp, arrNode);
-                    vp->_liveAnewarrays[liveIdx] = NULL;
+                    uint64_t slotKey = vp->_arrayShadowForwardingMap.KeyAt(slotCursor);
+                    TR::Node *slotValue = vp->_arrayShadowForwardingMap[slotCursor];
+                    if ((slotKey >> 32) != origArrayVN || slotValue == NULL)
+                        continue;
+                    int64_t slotOffset = (int64_t)(int32_t)(uint32_t)(slotKey & 0xffffffffu);
+                    TR::Node *coldVal = NULL;
+                    CS2::HashIndex coldIdx;
+                    if (vp->_arrayShadowColdValueMap.Locate(slotKey, coldIdx))
+                        coldVal = vp->_arrayShadowColdValueMap[coldIdx];
+                    rebuild->_slots.add(new (vp->trHeapMemory()) OMR::ValuePropagation::ForwardedSlot(
+                        slotOffset, slotValue, coldVal));
                     }
-                else
-                    {
-                    // The call is in a cold (guard-failure/OSR) block.  Clone a fresh
-                    // anewarray here and redirect the call arg to it, preserving the
-                    // warm-path array for elimination.
-                    if (vp->trace())
-                        logprintf(vp->trace(), vp->comp()->log(),
-                            "VP ARRAY FORWARD:   anewarray n%dn escapes via call arg %d of n%dn in cold block"
-                            " — cloning fresh anewarray\n",
-                            arrNode->getGlobalIndex(), i, node->getGlobalIndex());
+                vp->_coldArrayRebuilds.add(rebuild);
 
-                    TR::Node *origSize = arrNode->getFirstChild();
-                    TR::Node *origType = arrNode->getSecondChild();
-                    TR::Node *newSize  = TR::Node::create(arrNode, TR::iconst, 0, origSize->getInt());
-                    TR::Node *newType  = TR::Node::copy(origType);
-                    TR::SymbolReference *symRef
-                        = vp->comp()->getSymRefTab()->findOrCreateANewArraySymbolRef(
-                            origType->getSymbolReference()->getOwningMethodSymbol(vp->comp()));
-                    TR::Node *newArr = TR::Node::createWithSymRef(arrNode, TR::anewarray, 2, symRef);
-                    newArr->setHeapificationAlloc(true);
-                    newArr->setAndIncChild(0, newSize);
-                    newArr->setAndIncChild(1, newType);
-
-                    // Defer insertion and arg redirect to doDelayedTransformations,
-                    // which skips this rebuild if the warm array was invalidated later.
-                    TR::TreeTop *newArrTT = OMR::TreeTop::create(
-                        vp->comp(), TR::Node::create(TR::treetop, 1, newArr));
-
-                    uint32_t origArrayVN = (uint32_t)argVN;
-                    OMR::ValuePropagation::ColdArrayRebuild *rebuild
-                        = new (vp->trHeapMemory()) OMR::ValuePropagation::ColdArrayRebuild(
-                            newArrTT, vp->_curTree, node, i, arrNode,
-                            origArrayVN, vp->trMemory());
-                    auto slotCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(
-                        vp->_arrayShadowForwardingMap);
-                    for (slotCursor.SetToFirst(); slotCursor.Valid(); slotCursor.SetToNext())
-                        {
-                        uint64_t slotKey = vp->_arrayShadowForwardingMap.KeyAt(slotCursor);
-                        TR::Node *slotValue = vp->_arrayShadowForwardingMap[slotCursor];
-                        if ((slotKey >> 32) != origArrayVN || slotValue == NULL)
-                            continue;
-                        int64_t slotOffset = (int64_t)(int32_t)(uint32_t)(slotKey & 0xffffffffu);
-                        TR::Node *coldVal = NULL;
-                        CS2::HashIndex coldIdx;
-                        if (vp->_arrayShadowColdValueMap.Locate(slotKey, coldIdx))
-                            coldVal = vp->_arrayShadowColdValueMap[coldIdx];
-                        rebuild->_slots.add(new (vp->trHeapMemory()) OMR::ValuePropagation::ForwardedSlot(
-                            slotOffset, slotValue, coldVal));
-                        }
-                    vp->_coldArrayRebuilds.add(rebuild);
-
-                    if (vp->trace())
-                        logprintf(vp->trace(), vp->comp()->log(),
-                            "VP ARRAY FORWARD:   cold clone n%dn for call arg %d of n%dn deferred\n",
-                            newArr->getGlobalIndex(), i, node->getGlobalIndex());
-                    }
+                if (vp->trace())
+                    logprintf(vp->trace(), vp->comp()->log(),
+                        "VP ARRAY FORWARD:   cold clone n%dn for call arg %d of n%dn deferred\n",
+                        newArr->getGlobalIndex(), i, node->getGlobalIndex());
                 }
             }
         }

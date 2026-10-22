@@ -3160,14 +3160,13 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                     {
                     bool allArgsConstOrParm = true;
                     int32_t firstArg = valueChild->getFirstArgumentIndex();
-                    for (int32_t c = firstArg; c < valueChild->getNumChildren(); ++c)
-                        {
+                    for (int32_t c = firstArg; c < valueChild->getNumChildren(); ++c) {
                         TR::Node *arg = valueChild->getChild(c);
-                        if (!arg->getOpCode().isLoadConst()
-                            && !(arg->getOpCode().isLoadVarDirect()
-                                    && arg->getSymbol()->isParm()))
-                            { allArgsConstOrParm = false; break; }
+                        if (!arg->getOpCode().isLoadConst() && !(arg->getOpCode().isLoadVarDirect() && arg->getSymbol()->isParm())) {
+                            allArgsConstOrParm = false;
+                            break;
                         }
+                    }
                     if (allArgsConstOrParm)
                         {
                         coldTemplate = valueChild->duplicateTree();

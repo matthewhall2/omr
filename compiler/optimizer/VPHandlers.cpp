@@ -2684,43 +2684,34 @@ TR::Node *constrainAstore(OMR::ValuePropagation *vp, TR::Node *node)
     // Array store-spread elimination.
     if (vp->_isGlobalPropagation && !vp->_liveAnewarrays.IsEmpty())
         {
-        if (node->getSymbol()->isAutoOrParm() && !node->getOpCode().isIndirect())
-            {
+        if (node->getSymbol()->isAutoOrParm() && !node->getOpCode().isIndirect()) {
             // Track direct stores of the anewarray to a local — dead once the allocation is eliminated.
             int32_t valueVN = vp->getValueNumber(node->getFirstChild());
             CS2::HashIndex liveIdx;
-            if (vp->_liveAnewarrays.Locate(valueVN, liveIdx)
-                && vp->_liveAnewarrays[liveIdx] != NULL)
-                {
+            if (vp->_liveAnewarrays.Locate(valueVN, liveIdx) && vp->_liveAnewarrays[liveIdx] != NULL) {
                 uint32_t arrayVN = (uint32_t)valueVN;
                 CS2::HashIndex localListIdx;
                 TR_ScratchList<TR::TreeTop> *localList = NULL;
-                if (vp->_forwardedLocalStoreTreesToRemove.Locate(arrayVN, localListIdx))
+                if (vp->_forwardedLocalStoreTreesToRemove.Locate(arrayVN, localListIdx)) {
                     localList = vp->_forwardedLocalStoreTreesToRemove[localListIdx];
-                else
-                    {
+                } else {
                     localList = new (vp->trHeapMemory()) TR_ScratchList<TR::TreeTop>(vp->trMemory());
                     vp->_forwardedLocalStoreTreesToRemove.Add(arrayVN, localList);
-                    }
+                }
                 localList->add(vp->_curTree);
                 if (vp->trace())
                     logprintf(vp->trace(), vp->comp()->log(),
                         "ARRAY STORE-SPREAD ELIMINATION   recording local astore n%dn of anewarray VN=%u for deferred removal\n",
                         node->getGlobalIndex(), arrayVN);
-                }
             }
-        else if (!node->getSymbol()->isAutoOrParm()
-            && !isGuardFailureOrOSRBlock(vp))
-            {
+        } else if (!node->getSymbol()->isAutoOrParm() && !isGuardFailureOrOSRBlock(vp)) {
             // Escape via store to a non-local; awrtbar/awrtbari go through constrainWrtBar.
             TR::Node *valueChild = node->getOpCode().isIndirect()
                 ? node->getSecondChild()
                 : node->getFirstChild();
             int32_t valueVN = vp->getValueNumber(valueChild);
             CS2::HashIndex liveIdx;
-            if (vp->_liveAnewarrays.Locate(valueVN, liveIdx)
-                && vp->_liveAnewarrays[liveIdx] != NULL)
-                {
+            if (vp->_liveAnewarrays.Locate(valueVN, liveIdx) && vp->_liveAnewarrays[liveIdx] != NULL) {
                 TR::Node *arrNode = vp->_liveAnewarrays[liveIdx];
                 if (vp->trace())
                     logprintf(vp->trace(), vp->comp()->log(),

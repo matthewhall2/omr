@@ -3109,12 +3109,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                         prevTT = prevTT->getPrevTreeTop())
                     {
                     TR::Node *prevNode = prevTT->getNode();
-                    if (prevNode->getOpCode().isStoreDirect()
-                        && prevNode->getOpCode().hasSymbolReference()
-                        && prevNode->getSymbol()->isAutoOrParm()
-                        && !prevNode->getSymbol()->isParm()
-                        && prevNode->getFirstChild() == valueChild)
-                        {
+                    if (prevNode->getOpCode().isStoreDirect() && prevNode->getOpCode().hasSymbolReference() && prevNode->getSymbol()->isAutoOrParm() && !prevNode->getSymbol()->isParm() && prevNode->getFirstChild() == valueChild) {
                         tempSymRef = prevNode->getSymbolReference();
                         if (vp->trace())
                             logprintf(vp->trace(), vp->comp()->log(),
@@ -3122,13 +3117,14 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                                 tempSymRef->getReferenceNumber(),
                                 valueChild->getGlobalIndex());
                         break;
-                        }
+                    }
                     if (prevNode->getOpCode().isCall()
                         || prevNode->getOpCode().isBranch()
                         || prevNode->getOpCode().isReturn())
                         break;
                     }
 
+                // create new temp if not found
                 if (tempSymRef == NULL)
                     {
                     tempSymRef = vp->comp()->getSymRefTab()->createTemporary(

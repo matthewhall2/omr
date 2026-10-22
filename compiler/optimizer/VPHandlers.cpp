@@ -1916,9 +1916,6 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
             }
         else if (storedValue != NULL
             && storedValue->getNumChildren() == 0
-            // Do not forward a null constant: replacing with aconst NULL under a
-            // NULLCHK would make getNullCheckReference() return null.
-            && !(storedValue->getOpCodeValue() == TR::aconst && storedValue->getAddress() == 0)
             && performTransformation(vp->comp(),
                 "%sVP ARRAY FORWARD: replacing aloadi n%dn with forwarded value n%dn\n",
                 OPT_DETAILS,

@@ -6793,6 +6793,9 @@ void OMR::ValuePropagation::doDelayedTransformations()
                                         storedValue->getSymbolReference());
         else
             TR::Node::recreate(load, storedValue->getOpCodeValue());
+        // recreate() does not transfer _constValue; copy the address for aconst nodes.
+        if (load->getOpCodeValue() == TR::aconst)
+            load->setAddress(storedValue->getAddress());
         invalidateUseDefInfo();
         invalidateValueNumberInfo();
         if (trace())

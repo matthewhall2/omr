@@ -1893,7 +1893,7 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
 
         if (storedValue && vp->trace())
             logprintf(vp->trace(), vp->comp()->log(),
-                "VP ARRAY FORWARD:   map hit [base VN=%d offset %lld] -> value n%dn\n",
+                "ARRAY STORE-SPREAD ELIMINATION   map hit [base VN=%d offset %lld] -> value n%dn\n",
                 vp->getValueNumber(baseNode), (long long)offset,
                 storedValue->getGlobalIndex());
 
@@ -1907,7 +1907,7 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
             // it is forwarded on the next visit.
             if (vp->trace())
                 logprintf(vp->trace(), vp->comp()->log(),
-                    "VP ARRAY FORWARD:   removing NULLCHK n%dn — base is non-null anewarray,"
+                    "ARRAY STORE-SPREAD ELIMINATION   removing NULLCHK n%dn — base is non-null anewarray,"
                     " will forward aloadi n%dn at next visit\n",
                     curParent->getGlobalIndex(), node->getGlobalIndex());
             TR::Node::recreate(curParent, TR::treetop);
@@ -1917,7 +1917,7 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
         else if (storedValue != NULL
             && storedValue->getNumChildren() == 0
             && performTransformation(vp->comp(),
-                "%sVP ARRAY FORWARD: replacing aloadi n%dn with forwarded value n%dn\n",
+                "%sARRAY STORE-SPREAD ELIMINATION replacing aloadi n%dn with forwarded value n%dn\n",
                 OPT_DETAILS,
                 node->getGlobalIndex(),
                 storedValue->getGlobalIndex()))
@@ -1940,7 +1940,7 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                     {
                     if (vp->trace())
                         logprintf(vp->trace(), vp->comp()->log(),
-                            "VP ARRAY FORWARD:   queuing forwarded store treetop n%dn for removal\n",
+                            "ARRAY STORE-SPREAD ELIMINATION   queuing forwarded store treetop n%dn for removal\n",
                             storeTT->getNode()->getGlobalIndex());
 
                     uint32_t arrayVN = (uint32_t)(key >> 32);
@@ -1970,7 +1970,7 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                             {
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:   queuing compressedRefs anchor n%dn for removal\n",
+                                    "ARRAY STORE-SPREAD ELIMINATION   queuing compressedRefs anchor n%dn for removal\n",
                                     nextTT->getNode()->getGlobalIndex());
                             fwdList->add(nextTT);
                             }
@@ -1984,7 +1984,7 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                 new (vp->trHeapMemory()) TR_Pair<TR::Node, TR::Node>(node, storedValue));
             if (vp->trace())
                 logprintf(vp->trace(), vp->comp()->log(),
-                    "VP ARRAY FORWARD:   queued aloadi n%dn (rc=%d) for deferred morph to %s\n",
+                    "ARRAY STORE-SPREAD ELIMINATION   queued aloadi n%dn (rc=%d) for deferred morph to %s\n",
                     node->getGlobalIndex(),
                     node->getReferenceCount(),
                     storedValue->getOpCode().getName());
@@ -2704,7 +2704,7 @@ TR::Node *constrainAstore(OMR::ValuePropagation *vp, TR::Node *node)
                 localList->add(vp->_curTree);
                 if (vp->trace())
                     logprintf(vp->trace(), vp->comp()->log(),
-                        "VP ARRAY FORWARD:   recording local astore n%dn of anewarray VN=%u for deferred removal\n",
+                        "ARRAY STORE-SPREAD ELIMINATION   recording local astore n%dn of anewarray VN=%u for deferred removal\n",
                         node->getGlobalIndex(), arrayVN);
                 }
             }
@@ -2723,7 +2723,7 @@ TR::Node *constrainAstore(OMR::ValuePropagation *vp, TR::Node *node)
                 TR::Node *arrNode = vp->_liveAnewarrays[liveIdx];
                 if (vp->trace())
                     logprintf(vp->trace(), vp->comp()->log(),
-                        "VP ARRAY FORWARD:   anewarray n%dn escapes via astore n%dn — invalidating\n",
+                        "ARRAY STORE-SPREAD ELIMINATION   anewarray n%dn escapes via astore n%dn — invalidating\n",
                         arrNode->getGlobalIndex(), node->getGlobalIndex());
                 removeArrayForwardingEntries(vp, arrNode);
                 vp->_liveAnewarrays[liveIdx] = NULL;
@@ -3025,7 +3025,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                 TR::Node *arrNode = vp->_liveAnewarrays[liveIdx];
                 if (vp->trace())
                     logprintf(vp->trace(), vp->comp()->log(),
-                        "VP ARRAY FORWARD:   anewarray n%dn escapes via indirect store n%dn value child — invalidating\n",
+                        "ARRAY STORE-SPREAD ELIMINATION   anewarray n%dn escapes via indirect store n%dn value child — invalidating\n",
                         arrNode->getGlobalIndex(), node->getGlobalIndex());
                 removeArrayForwardingEntries(vp, arrNode);
                 vp->_liveAnewarrays[liveIdx] = NULL;
@@ -3085,7 +3085,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                                 {
                                 if (vp->trace())
                                     logprintf(vp->trace(), vp->comp()->log(),
-                                        "VP ARRAY FORWARD:   skip n%dn: value n%dn is aload of Auto with ambiguous def\n",
+                                        "ARRAY STORE-SPREAD ELIMINATION   skip n%dn: value n%dn is aload of Auto with ambiguous def\n",
                                         node->getGlobalIndex(), valueChild->getGlobalIndex());
                                 // valueChild is ambiguous; skip this slot entirely
                                 }
@@ -3093,7 +3093,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                                 {
                                 if (vp->trace())
                                     logprintf(vp->trace(), vp->comp()->log(),
-                                        "VP ARRAY FORWARD:   value n%dn is aload of single-def Auto — forwarding directly\n",
+                                        "ARRAY STORE-SPREAD ELIMINATION   value n%dn is aload of single-def Auto — forwarding directly\n",
                                         valueChild->getGlobalIndex());
                                 forwardedValue = valueChild;
                                 }
@@ -3125,7 +3125,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                                 tempSymRef = prevNode->getSymbolReference();
                                 if (vp->trace())
                                     logprintf(vp->trace(), vp->comp()->log(),
-                                        "VP ARRAY FORWARD:   reusing existing temp #%d for non-leaf value n%dn\n",
+                                        "ARRAY STORE-SPREAD ELIMINATION   reusing existing temp #%d for non-leaf value n%dn\n",
                                         tempSymRef->getReferenceNumber(),
                                         valueChild->getGlobalIndex());
                                 break;
@@ -3153,7 +3153,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
 
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:   privatized non-leaf value n%dn into astore/aload temp #%d\n",
+                                    "ARRAY STORE-SPREAD ELIMINATION   privatized non-leaf value n%dn into astore/aload temp #%d\n",
                                     valueChild->getGlobalIndex(),
                                     tempSymRef->getReferenceNumber());
                             }
@@ -3184,7 +3184,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                                 coldTemplate = valueChild->duplicateTree();
                                 if (vp->trace())
                                     logprintf(vp->trace(), vp->comp()->log(),
-                                        "VP ARRAY FORWARD:   cold template for n%dn is duplicated recognized call n%dn\n",
+                                        "ARRAY STORE-SPREAD ELIMINATION   cold template for n%dn is duplicated recognized call n%dn\n",
                                         valueChild->getGlobalIndex(), coldTemplate->getGlobalIndex());
                                 }
                             }
@@ -3207,7 +3207,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                             vp->_arrayShadowStoreTTMap.Add(key, vp->_curTree);
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:   mapped [anewarray n%dn VN=%d offset %lld] -> value n%dn\n",
+                                    "ARRAY STORE-SPREAD ELIMINATION   mapped [anewarray n%dn VN=%d offset %lld] -> value n%dn\n",
                                     arrNode->getGlobalIndex(), baseVN, (long long)offset,
                                     forwardedValue->getGlobalIndex());
                             }
@@ -3216,7 +3216,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                             // Same slot written twice — purge all entries for this array.
                             if (vp->trace())
                                 logprintf(vp->trace(), vp->comp()->log(),
-                                    "VP ARRAY FORWARD:   slot [anewarray n%dn offset %lld] written twice (n%dn) — purging\n",
+                                    "ARRAY STORE-SPREAD ELIMINATION   slot [anewarray n%dn offset %lld] written twice (n%dn) — purging\n",
                                     arrNode->getGlobalIndex(), (long long)offset,
                                     node->getGlobalIndex());
                             removeArrayForwardingEntries(vp, arrNode);
@@ -3298,7 +3298,7 @@ TR::Node *constrainReturn(OMR::ValuePropagation *vp, TR::Node *node)
             TR::Node *arrNode = vp->_liveAnewarrays[liveIdx];
             if (vp->trace())
                 logprintf(vp->trace(), vp->comp()->log(),
-                    "VP ARRAY FORWARD:   anewarray n%dn escapes via areturn n%dn — invalidating\n",
+                    "ARRAY STORE-SPREAD ELIMINATION   anewarray n%dn escapes via areturn n%dn — invalidating\n",
                     arrNode->getGlobalIndex(), node->getGlobalIndex());
             removeArrayForwardingEntries(vp, arrNode);
             vp->_liveAnewarrays[liveIdx] = NULL;
@@ -4232,7 +4232,7 @@ static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *ar
                     {
                     if (vp->trace())
                         logprintf(vp->trace(), vp->comp()->log(),
-                            "VP ARRAY FORWARD:   cancelling pending morph of aloadi n%dn (escape detected)\n",
+                            "ARRAY STORE-SPREAD ELIMINATION   cancelling pending morph of aloadi n%dn (escape detected)\n",
                             p->getKey()->getGlobalIndex());
                     p->setKey(NULL);
                     }
@@ -4294,7 +4294,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                     vp->_forwardedAnewArrayTTs.Add(arrayVN, vp->_curTree);
                     if (vp->trace())
                         logprintf(vp->trace(), vp->comp()->log(),
-                            "VP ARRAY FORWARD: registered anewarray n%dn VN=%d for forwarding\n",
+                            "ARRAY STORE-SPREAD ELIMINATION registered anewarray n%dn VN=%d for forwarding\n",
                             node->getGlobalIndex(), arrayVN);
                     }
                 }
@@ -5203,7 +5203,7 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
                 {
                 if (vp->trace())
                     logprintf(vp->trace(), vp->comp()->log(),
-                        "VP ARRAY FORWARD:   anewarray n%dn escapes via call arg %d of n%dn — invalidating\n",
+                        "ARRAY STORE-SPREAD ELIMINATION   anewarray n%dn escapes via call arg %d of n%dn — invalidating\n",
                         arrNode->getGlobalIndex(), i, node->getGlobalIndex());
                 removeArrayForwardingEntries(vp, arrNode);
                 vp->_liveAnewarrays[liveIdx] = NULL;
@@ -5215,7 +5215,7 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
                 // warm-path array for elimination.
                 if (vp->trace())
                     logprintf(vp->trace(), vp->comp()->log(),
-                        "VP ARRAY FORWARD:   anewarray n%dn escapes via call arg %d of n%dn in cold block"
+                        "ARRAY STORE-SPREAD ELIMINATION   anewarray n%dn escapes via call arg %d of n%dn in cold block"
                         " — cloning fresh anewarray\n",
                         arrNode->getGlobalIndex(), i, node->getGlobalIndex());
 
@@ -5261,7 +5261,7 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
 
                 if (vp->trace())
                     logprintf(vp->trace(), vp->comp()->log(),
-                        "VP ARRAY FORWARD:   cold clone n%dn for call arg %d of n%dn deferred\n",
+                        "ARRAY STORE-SPREAD ELIMINATION   cold clone n%dn for call arg %d of n%dn deferred\n",
                         newArr->getGlobalIndex(), i, node->getGlobalIndex());
                 }
             }

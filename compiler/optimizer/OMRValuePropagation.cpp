@@ -6628,7 +6628,7 @@ void OMR::ValuePropagation::doDelayedTransformations()
         ListIterator<ColdArrayRebuild> rebuildIt(&_coldArrayRebuilds);
         for (ColdArrayRebuild *rebuild = rebuildIt.getFirst(); rebuild; rebuild = rebuildIt.getNext())
             {
-            // Check whether the warm array survived the GVP walk.
+            // Check whether the warm array survived the GVP walk. There may be multiple arrays tracked so we must check each array
             CS2::HashIndex liveIdx;
             if (!_liveAnewarrays.Locate((int32_t)rebuild->_origArrayVN, liveIdx)
                 || _liveAnewarrays[liveIdx] == NULL)
@@ -6640,7 +6640,7 @@ void OMR::ValuePropagation::doDelayedTransformations()
                 continue;
                 }
 
-            // Warm array survived: insert the clone treetop and redirect the call arg.
+            // array survived: insert the clone treetop and redirect the call arg.
             rebuild->_insertBeforeTT->insertBefore(rebuild->_anewarrayTT);
             TR::Node *newArr = rebuild->_anewarrayTT->getNode()->getFirstChild();
             rebuild->_callNode->getChild(rebuild->_argIndex)->decReferenceCount();
@@ -6756,25 +6756,6 @@ void OMR::ValuePropagation::doDelayedTransformations()
     _arrayShadowForwardingMap.MakeEmpty();
     _arrayShadowColdValueMap.MakeEmpty();
     _arrayShadowStoreTTMap.MakeEmpty();
-
-    // Mark surviving warm-block anewarrays as removable.  Cold-block clones are
-    // not in _forwardedAnewArrayTTs and must never get allocationCanBeRemoved.
-    auto liveCursor = CS2::HashTable<int32_t, TR::Node *, TR::Allocator>::Cursor(_liveAnewarrays);
-    for (liveCursor.SetToFirst(); liveCursor.Valid(); liveCursor.SetToNext())
-        {
-        TR::Node *arrNode = _liveAnewarrays[liveCursor];
-        if (arrNode == NULL)
-            continue;
-        int32_t arrayVN = _liveAnewarrays.KeyAt(liveCursor);
-        CS2::HashIndex arrTTIdx;
-        if (!_forwardedAnewArrayTTs.Locate(arrayVN, arrTTIdx))
-            continue; // cold-block clone — skip
-        if (trace())
-            logprintf(trace(), log,
-                "VP ARRAY FORWARD: setting allocationCanBeRemoved on surviving anewarray n%dn\n",
-                arrNode->getGlobalIndex());
-        arrNode->setAllocationCanBeRemoved(true);
-        }
     _liveAnewarrays.MakeEmpty();
 
     // Execute deferred aloadi rewrites (queued during the GVP walk; done here

@@ -5218,7 +5218,7 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
                 newArr->setAndIncChild(1, newType);
 
                 // Defer insertion and arg redirect to doDelayedTransformations,
-                // which skips this rebuild if the warm array was invalidated later.
+                // which skips this rebuild if the opt was invalidated later.
                 TR::TreeTop *newArrTT = OMR::TreeTop::create(
                     vp->comp(), TR::Node::create(TR::treetop, 1, newArr));
 

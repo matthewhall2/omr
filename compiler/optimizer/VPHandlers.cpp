@@ -1928,10 +1928,7 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
             if (fwdConstraint && isGlobalFwd)
                 vp->addGlobalConstraint(node, fwdConstraint);
 
-            // Queue the awrtbari for deferred removal and null the map entry so a
-            // second forwarded load from the same slot does not re-queue it.
-            // On compressed-refs JVMs also remove the compressedRefs anchor that
-            // immediately follows the awrtbari and wraps the same node.
+            // Queue the awrtbari for deferred removal
             CS2::HashIndex storeTTIdx;
             if (vp->_arrayShadowStoreTTMap.Locate(key, storeTTIdx))
                 {
@@ -1946,16 +1943,20 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
                     uint32_t arrayVN = (uint32_t)(key >> 32);
                     CS2::HashIndex fwdListIdx;
                     TR_ScratchList<TR::TreeTop> *fwdList = NULL;
-                    if (vp->_forwardedStoreTreesToRemove.Locate(arrayVN, fwdListIdx))
+                    if (vp->_forwardedStoreTreesToRemove.Locate(arrayVN, fwdListIdx)) {
                         fwdList = vp->_forwardedStoreTreesToRemove[fwdListIdx];
-                    else
-                        {
+                    }
+                    else {
                         fwdList = new (vp->trHeapMemory()) TR_ScratchList<TR::TreeTop>(vp->trMemory());
                         vp->_forwardedStoreTreesToRemove.Add(arrayVN, fwdList);
-                        }
+                    }
                     fwdList->add(storeTT);
+
+                    // null so that multliple loads of the same array slot do not queue the same awrtbari for removal more than once
                     vp->_arrayShadowStoreTTMap[storeTTIdx] = NULL;
 
+                    // compressed-ref jvms have a compressedref TreeTop right after an address store
+                    // we need to remove it as well if we are removing the store
                     if (vp->comp()->useCompressedPointers())
                         {
                         TR::TreeTop *nextTT = storeTT->getNextTreeTop();

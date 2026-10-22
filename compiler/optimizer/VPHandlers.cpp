@@ -5213,6 +5213,7 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
                     = vp->comp()->getSymRefTab()->findOrCreateANewArraySymbolRef(
                         origType->getSymbolReference()->getOwningMethodSymbol(vp->comp()));
                 TR::Node *newArr = TR::Node::createWithSymRef(arrNode, TR::anewarray, 2, symRef);
+                // we do not want stack allocation in the cold path, as this may insert extra instructions in the prologue
                 newArr->setHeapificationAlloc(true);
                 newArr->setAndIncChild(0, newSize);
                 newArr->setAndIncChild(1, newType);

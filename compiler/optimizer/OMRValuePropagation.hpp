@@ -1013,15 +1013,15 @@ public:
     struct ForwardedSlot {
         TR_ALLOC(TR_Memory::ValuePropagation)
 
-        ForwardedSlot(int64_t offset, TR::Node *value, TR::Node *coldValue = NULL)
+        ForwardedSlot(int64_t offset, TR::Node *value, TR::Node *coldFillValue = NULL)
             : _offset(offset)
             , _value(value)
-            , _coldValue(coldValue ? coldValue : value)
+            , _coldFillValue(coldFillValue ? coldFillValue : value)
         {}
 
         int64_t   _offset;
         TR::Node *_value;
-        TR::Node *_coldValue;
+        TR::Node *_coldFillValue;
     };
 
     // A fresh anewarray for a cold (guard-failure/OSR) block, to replace the warm-block

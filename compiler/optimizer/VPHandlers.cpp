@@ -3046,7 +3046,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
             TR::Node *valueChild = node->getChild(1);
 
             TR::Node *forwardedValue = NULL;
-            TR::Node *coldTemplate = NULL;
+            TR::Node *coldFillValue = NULL;
 
             if (valueChild->getNumChildren() == 0)
                 {
@@ -3097,7 +3097,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                     forwardedValue = valueChild;
                     }
                 // Leaf values are always safe to use directly in the cold block.
-                coldTemplate = forwardedValue;
+                coldFillValue = forwardedValue;
                 }
             else
                 {
@@ -3153,7 +3153,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                 // If valueChild is a recognized pure call whose arguments are all
                 // constants or parameters, it is safe to re-evaluate it in the cold
                 // block.  Otherwise fall back to loading from the privatisation temp.
-                coldTemplate = forwardedValue;
+                coldFillValue = forwardedValue;
                 if (valueChild->getOpCode().isCall()
                     && valueChild->getSymbol()->castToMethodSymbol()->getRecognizedMethod()
                             != TR::unknownMethod)
@@ -3169,11 +3169,11 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                     }
                     if (allArgsConstOrParm)
                         {
-                        coldTemplate = valueChild->duplicateTree();
+                        coldFillValue = valueChild->duplicateTree();
                         if (vp->trace())
                             logprintf(vp->trace(), vp->comp()->log(),
                                 "ARRAY STORE-SPREAD ELIMINATION   cold template for n%dn is duplicated recognized call n%dn\n",
-                                valueChild->getGlobalIndex(), coldTemplate->getGlobalIndex());
+                                valueChild->getGlobalIndex(), coldFillValue->getGlobalIndex());
                         }
                     }
                 }
@@ -3191,7 +3191,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                 if (!vp->_arraySlotValueMap.Locate(key, fwdIdx))
                     {
                     vp->_arraySlotValueMap.Add(key, forwardedValue);
-                    vp->_arraySlotColdValueMap.Add(key, coldTemplate);
+                    vp->_arraySlotColdValueMap.Add(key, coldFillValue);
                     vp->_arraySlotStoreTTMap.Add(key, vp->_curTree);
                     if (vp->trace())
                         logprintf(vp->trace(), vp->comp()->log(),

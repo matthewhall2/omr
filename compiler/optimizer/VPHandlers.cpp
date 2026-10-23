@@ -2704,7 +2704,7 @@ TR::Node *constrainAstore(OMR::ValuePropagation *vp, TR::Node *node)
                         "ARRAY STORE-SPREAD ELIMINATION   recording local astore n%dn of anewarray VN=%u for deferred removal\n",
                         node->getGlobalIndex(), arrayVN);
             }
-        } else if (!node->getSymbol()->isAutoOrParm()) {
+        } else if (!node->getSymbol()->isAutoOrParm() && !isGuardFailureOrOSRBlock(vp)) {
             // Escape via store to a non-local; awrtbar/awrtbari go through constrainWrtBar.
             TR::Node *valueChild = node->getOpCode().isIndirect()
                 ? node->getSecondChild()
@@ -3155,7 +3155,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                 // Leaf values are always safe to use directly in the cold block unless
                 // a recognized call was found as the defining expression.
                 coldFillValue = forwardedValue;
-                if (coldSourceExpr && coldSourceExpr->getOpCode().isCall() && coldSourceExpr->getSymbol()->castToMethodSymbol()->getRecognizedMethod() != TR::unknownMethod) {
+                if (coldSourceExpr && coldSourceExpr->getOpCode().isCall()) {
                     bool allArgsConstOrParm = true;
                     int32_t firstArg = coldSourceExpr->getFirstArgumentIndex();
                     for (int32_t c = firstArg; c < coldSourceExpr->getNumChildren(); ++c) {
@@ -3226,7 +3226,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                 // constants or parameters, it is safe to re-evaluate it in the cold
                 // block.  Otherwise fall back to loading from the privatisation temp.
                 coldFillValue = forwardedValue;
-                if (coldSourceExpr && coldSourceExpr->getOpCode().isCall() && coldSourceExpr->getSymbol()->castToMethodSymbol()->getRecognizedMethod() != TR::unknownMethod) {
+                if (coldSourceExpr && coldSourceExpr->getOpCode().isCall()) {
                     bool allArgsConstOrParm = true;
                     int32_t firstArg = coldSourceExpr->getFirstArgumentIndex();
                     for (int32_t c = firstArg; c < coldSourceExpr->getNumChildren(); ++c) {

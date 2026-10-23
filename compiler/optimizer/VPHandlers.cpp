@@ -3040,6 +3040,77 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
             TR::Node *arrNode  = vp->_liveAnewarrays[liveIdx];
             TR::Node *valueChild = node->getChild(1);
 
+            // Walk back through single-def auto stores to find the original expression
+            // (e.g. an acall) for use as the cold-block template.
+            TR_UseDefInfo *useDefInfo = vp->_useDefInfo;
+            TR::Node *coldSourceExpr = valueChild;
+            int32_t chainDepth = 0;
+            while (coldSourceExpr != NULL
+                   && coldSourceExpr->getNumChildren() == 0
+                   && coldSourceExpr->getOpCode().isLoadVarDirect()
+                   && coldSourceExpr->getOpCode().hasSymbolReference()
+                   && coldSourceExpr->getSymbol()->isAutoOrParm()
+                   && !coldSourceExpr->getSymbol()->isParm()
+                   && chainDepth++ < 5)
+                {
+                TR::Node *defStore = NULL;
+                if (useDefInfo)
+                    {
+                    uint16_t uIdx = coldSourceExpr->getUseDefIndex();
+                    if (useDefInfo->isUseIndex(uIdx))
+                        {
+                        TR_UseDefInfo::BitVector defs(vp->comp()->allocator());
+                        if (useDefInfo->getUseDef(defs, uIdx) && defs.PopulationCount() == 1)
+                            {
+                            TR_UseDefInfo::BitVector::Cursor vc(defs);
+                            vc.SetToFirstOne();
+                            if ((int32_t)vc >= useDefInfo->getFirstRealDefIndex())
+                                {
+                                TR::Node *dNode = useDefInfo->getNode(vc);
+                                if (dNode && dNode->getOpCode().isStoreDirect() && dNode->getNumChildren() > 0)
+                                    defStore = dNode;
+                                }
+                            }
+                        }
+                    }
+
+                // Fall back to a backward scan if use-def info did not resolve it.
+                if (defStore == NULL)
+                    {
+                    TR::SymbolReference *sRef = coldSourceExpr->getSymbolReference();
+                    for (TR::TreeTop *prevTT = vp->_curTree->getPrevTreeTop();
+                         prevTT != NULL && prevTT->getNode()->getOpCodeValue() != TR::BBStart;
+                         prevTT = prevTT->getPrevTreeTop())
+                        {
+                        TR::Node *pNode = prevTT->getNode();
+                        if (pNode->getOpCode().isStoreDirect()
+                            && pNode->getOpCode().hasSymbolReference()
+                            && pNode->getSymbolReference() == sRef
+                            && pNode->getNumChildren() > 0)
+                            {
+                            defStore = pNode;
+                            break;
+                            }
+                        }
+                    }
+
+                if (defStore != NULL && defStore->getNumChildren() > 0)
+                    {
+                    coldSourceExpr = defStore->getFirstChild();
+                    }
+                else
+                    {
+                    break;
+                    }
+                }
+
+            if (vp->trace() && coldSourceExpr != valueChild && coldSourceExpr != NULL)
+                {
+                logprintf(vp->trace(), vp->comp()->log(),
+                    "ARRAY STORE-SPREAD ELIMINATION   resolved valueChild n%dn to defining store expression n%dn %s for cold template\n",
+                    valueChild->getGlobalIndex(), coldSourceExpr->getGlobalIndex(), coldSourceExpr->getOpCode().getName());
+                }
+
             TR::Node *forwardedValue = NULL;
             TR::Node *coldFillValue = NULL;
 
@@ -3051,7 +3122,6 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                     && !valueChild->getSymbol()->isParm())
                     {
                     bool skipValue = true;
-                    TR_UseDefInfo *useDefInfo = vp->_useDefInfo;
                     if (useDefInfo) {
                         uint16_t valUseIdx = valueChild->getUseDefIndex();
                         if (useDefInfo->isUseIndex(valUseIdx)) {
@@ -3082,8 +3152,27 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                     // parm aload, aconst, constRef aload — always safe to forward directly
                     forwardedValue = valueChild;
                 }
-                // Leaf values are always safe to use directly in the cold block.
+                // Leaf values are always safe to use directly in the cold block unless
+                // a recognized call was found as the defining expression.
                 coldFillValue = forwardedValue;
+                if (coldSourceExpr && coldSourceExpr->getOpCode().isCall() && coldSourceExpr->getSymbol()->castToMethodSymbol()->getRecognizedMethod() != TR::unknownMethod) {
+                    bool allArgsConstOrParm = true;
+                    int32_t firstArg = coldSourceExpr->getFirstArgumentIndex();
+                    for (int32_t c = firstArg; c < coldSourceExpr->getNumChildren(); ++c) {
+                        TR::Node *arg = coldSourceExpr->getChild(c);
+                        if (!arg->getOpCode().isLoadConst() && !(arg->getOpCode().isLoadVarDirect() && arg->getSymbol()->isParm())) {
+                            allArgsConstOrParm = false;
+                            break;
+                        }
+                    }
+                    if (allArgsConstOrParm) {
+                        coldFillValue = coldSourceExpr->duplicateTree();
+                        if (vp->trace())
+                            logprintf(vp->trace(), vp->comp()->log(),
+                                "ARRAY STORE-SPREAD ELIMINATION   cold template for n%dn is duplicated recognized call n%dn\n",
+                                valueChild->getGlobalIndex(), coldFillValue->getGlobalIndex());
+                    }
+                }
             } else {
                 // Non-leaf value: check if an existing auto temp already stores it in
                 // this block; if so reuse that temp, otherwise privatise into a new one.
@@ -3133,22 +3222,22 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                 forwardedValue = TR::Node::createWithSymRef(TR::aload, 0, tempSymRef);
                 forwardedValue->setReferenceCount(1);
 
-                // If valueChild is a recognized pure call whose arguments are all
+                // If coldSourceExpr is a recognized pure call whose arguments are all
                 // constants or parameters, it is safe to re-evaluate it in the cold
                 // block.  Otherwise fall back to loading from the privatisation temp.
                 coldFillValue = forwardedValue;
-                if (valueChild->getOpCode().isCall() && valueChild->getSymbol()->castToMethodSymbol()->getRecognizedMethod() != TR::unknownMethod) {
+                if (coldSourceExpr && coldSourceExpr->getOpCode().isCall() && coldSourceExpr->getSymbol()->castToMethodSymbol()->getRecognizedMethod() != TR::unknownMethod) {
                     bool allArgsConstOrParm = true;
-                    int32_t firstArg = valueChild->getFirstArgumentIndex();
-                    for (int32_t c = firstArg; c < valueChild->getNumChildren(); ++c) {
-                        TR::Node *arg = valueChild->getChild(c);
+                    int32_t firstArg = coldSourceExpr->getFirstArgumentIndex();
+                    for (int32_t c = firstArg; c < coldSourceExpr->getNumChildren(); ++c) {
+                        TR::Node *arg = coldSourceExpr->getChild(c);
                         if (!arg->getOpCode().isLoadConst() && !(arg->getOpCode().isLoadVarDirect() && arg->getSymbol()->isParm())) {
                             allArgsConstOrParm = false;
                             break;
                         }
                     }
                     if (allArgsConstOrParm) {
-                        coldFillValue = valueChild->duplicateTree();
+                        coldFillValue = coldSourceExpr->duplicateTree();
                         if (vp->trace())
                             logprintf(vp->trace(), vp->comp()->log(),
                                 "ARRAY STORE-SPREAD ELIMINATION   cold template for n%dn is duplicated recognized call n%dn\n",

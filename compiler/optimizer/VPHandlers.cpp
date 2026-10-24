@@ -1916,6 +1916,7 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
             }
         else if (storedValue != NULL
             && storedValue->getNumChildren() == 0
+            && !(storedValue->getOpCodeValue() == TR::aconst && storedValue->getAddress() == 0)
             && performTransformation(vp->comp(),
                 "%sARRAY STORE-SPREAD ELIMINATION replacing aloadi n%dn with forwarded value n%dn\n",
                 OPT_DETAILS,
@@ -3152,98 +3153,42 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                     // parm aload, aconst, constRef aload — always safe to forward directly
                     forwardedValue = valueChild;
                 }
-                // Leaf values are always safe to use directly in the cold block unless
-                // a recognized call was found as the defining expression.
-                coldFillValue = forwardedValue;
-                if (coldSourceExpr && coldSourceExpr->getOpCode().isCall()) {
-                    bool allArgsConstOrParm = true;
-                    int32_t firstArg = coldSourceExpr->getFirstArgumentIndex();
-                    for (int32_t c = firstArg; c < coldSourceExpr->getNumChildren(); ++c) {
-                        TR::Node *arg = coldSourceExpr->getChild(c);
-                        if (!arg->getOpCode().isLoadConst() && !(arg->getOpCode().isLoadVarDirect() && arg->getSymbol()->isParm())) {
-                            allArgsConstOrParm = false;
-                            break;
-                        }
-                    }
-                    if (allArgsConstOrParm) {
-                        coldFillValue = coldSourceExpr->duplicateTree();
-                        if (vp->trace())
-                            logprintf(vp->trace(), vp->comp()->log(),
-                                "ARRAY STORE-SPREAD ELIMINATION   cold template for n%dn is duplicated recognized call n%dn\n",
-                                valueChild->getGlobalIndex(), coldFillValue->getGlobalIndex());
-                    }
-                }
+                // Leaf values are safe to use directly in the cold block unless
+                // a defining expression was found.
+                coldFillValue = coldSourceExpr ? coldSourceExpr->duplicateTree() : forwardedValue;
+                if (vp->trace() && coldFillValue != forwardedValue)
+                    logprintf(vp->trace(), vp->comp()->log(),
+                        "ARRAY STORE-SPREAD ELIMINATION   cold template for n%dn is duplicated expression n%dn\n",
+                        valueChild->getGlobalIndex(), coldFillValue->getGlobalIndex());
             } else {
-                // Non-leaf value: check if an existing auto temp already stores it in
-                // this block; if so reuse that temp, otherwise privatise into a new one.
-                TR::SymbolReference *tempSymRef = NULL;
-                for (TR::TreeTop *prevTT = vp->_curTree->getPrevTreeTop();
-                        prevTT != NULL && prevTT->getNode()->getOpCodeValue() != TR::BBStart;
-                        prevTT = prevTT->getPrevTreeTop())
-                    {
-                    TR::Node *prevNode = prevTT->getNode();
-                    if (prevNode->getOpCode().isStoreDirect() && prevNode->getOpCode().hasSymbolReference() && prevNode->getSymbol()->isAutoOrParm() && !prevNode->getSymbol()->isParm() && prevNode->getFirstChild() == valueChild) {
-                        tempSymRef = prevNode->getSymbolReference();
-                        if (vp->trace())
-                            logprintf(vp->trace(), vp->comp()->log(),
-                                "ARRAY STORE-SPREAD ELIMINATION   reusing existing temp #%d for non-leaf value n%dn\n",
-                                tempSymRef->getReferenceNumber(),
-                                valueChild->getGlobalIndex());
-                        break;
-                    }
-                    if (prevNode->getOpCode().isCall()
-                        || prevNode->getOpCode().isBranch()
-                        || prevNode->getOpCode().isReturn())
-                        break;
-                    }
+                // Non-leaf value: privatise into a fresh single-def temp for warm forwarding
+                TR::SymbolReference *tempSymRef = vp->comp()->getSymRefTab()->createTemporary(
+                    vp->comp()->getMethodSymbol(), TR::Address);
+                TR::Node *astoreNode = TR::Node::createWithSymRef(
+                    TR::astore, 1, 1, valueChild, tempSymRef);
+                TR::TreeTop *astoreTT = TR::TreeTop::create(
+                    vp->comp(), astoreNode, NULL, NULL);
+                vp->_curTree->insertBefore(astoreTT);
 
-                // create new temp if not found
-                if (tempSymRef == NULL) {
-                    tempSymRef = vp->comp()->getSymRefTab()->createTemporary(
-                        vp->comp()->getMethodSymbol(), TR::Address);
-                    TR::Node *astoreNode = TR::Node::createWithSymRef(
-                        TR::astore, 1, 1, valueChild, tempSymRef);
-                    TR::TreeTop *astoreTT = TR::TreeTop::create(
-                        vp->comp(), astoreNode, NULL, NULL);
-                    vp->_curTree->insertBefore(astoreTT);
+                TR::Node *tempLoad = TR::Node::createWithSymRef(TR::aload, 0, tempSymRef);
+                tempLoad->setReferenceCount(1);
+                node->setAndIncChild(1, tempLoad);
+                valueChild->decReferenceCount();
 
-                    TR::Node *tempLoad = TR::Node::createWithSymRef(TR::aload, 0, tempSymRef);
-                    tempLoad->setReferenceCount(1);
-                    node->setAndIncChild(1, tempLoad);
-                    valueChild->decReferenceCount();
-
-                    if (vp->trace())
-                        logprintf(vp->trace(), vp->comp()->log(),
-                            "ARRAY STORE-SPREAD ELIMINATION   privatized non-leaf value n%dn into astore/aload temp #%d\n",
-                            valueChild->getGlobalIndex(),
-                            tempSymRef->getReferenceNumber());
-                }
+                if (vp->trace())
+                    logprintf(vp->trace(), vp->comp()->log(),
+                        "ARRAY STORE-SPREAD ELIMINATION   privatized non-leaf value n%dn into astore/aload temp #%d\n",
+                        valueChild->getGlobalIndex(),
+                        tempSymRef->getReferenceNumber());
 
                 forwardedValue = TR::Node::createWithSymRef(TR::aload, 0, tempSymRef);
                 forwardedValue->setReferenceCount(1);
 
-                // If coldSourceExpr is a recognized pure call whose arguments are all
-                // constants or parameters, it is safe to re-evaluate it in the cold
-                // block.  Otherwise fall back to loading from the privatisation temp.
-                coldFillValue = forwardedValue;
-                if (coldSourceExpr && coldSourceExpr->getOpCode().isCall()) {
-                    bool allArgsConstOrParm = true;
-                    int32_t firstArg = coldSourceExpr->getFirstArgumentIndex();
-                    for (int32_t c = firstArg; c < coldSourceExpr->getNumChildren(); ++c) {
-                        TR::Node *arg = coldSourceExpr->getChild(c);
-                        if (!arg->getOpCode().isLoadConst() && !(arg->getOpCode().isLoadVarDirect() && arg->getSymbol()->isParm())) {
-                            allArgsConstOrParm = false;
-                            break;
-                        }
-                    }
-                    if (allArgsConstOrParm) {
-                        coldFillValue = coldSourceExpr->duplicateTree();
-                        if (vp->trace())
-                            logprintf(vp->trace(), vp->comp()->log(),
-                                "ARRAY STORE-SPREAD ELIMINATION   cold template for n%dn is duplicated recognized call n%dn\n",
-                                valueChild->getGlobalIndex(), coldFillValue->getGlobalIndex());
-                    }
-                }
+                coldFillValue = coldSourceExpr ? coldSourceExpr->duplicateTree() : forwardedValue;
+                if (vp->trace() && coldFillValue != forwardedValue)
+                    logprintf(vp->trace(), vp->comp()->log(),
+                        "ARRAY STORE-SPREAD ELIMINATION   cold template for n%dn is duplicated expression n%dn\n",
+                        valueChild->getGlobalIndex(), coldFillValue->getGlobalIndex());
             }
 
             if (forwardedValue != NULL) {

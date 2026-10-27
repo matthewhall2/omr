@@ -1016,7 +1016,7 @@ public:
             , _slotValues(allocator)
         {}
 
-        TR::TreeTop *_anewarrayTT;    // uninserted treetop wrapping the cloned anewarray
+        TR::TreeTop *_anewarrayTT;    // uninserted anewarray TreeTop 
         TR::TreeTop *_insertBeforeTT; // insert _anewarrayTT before this treetop
         TR::Node    *_callNode;       // the call whose arg is to be redirected
         int32_t      _argIndex;       // index of the arg to redirect

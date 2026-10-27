@@ -981,35 +981,27 @@ public:
     CS2::HashTable<uint64_t, TR::list<TR::Node *> *, TR::Allocator> _constNodeInfo;
 
     // Array store-spread elimination state.
-    //
-    // Warm-block anewarrays under active tracking — VN -> node.  Entries are nulled
-    // on escape; consumed by doDelayedTransformations.
+    // Warm-block anewarrays under active tracking — VN -> node.  Entries are nulled on escape
     CS2::HashTable<int32_t, TR::Node *, TR::Allocator> _liveAnewarrays;
 
     // VN -> treetop of the anewarray, for physical removal once all stores are forwarded.
     CS2::HashTable<int32_t, TR::TreeTop *, TR::Allocator> _forwardedAnewArrayTTs;
 
     // (anewarray_VN << 32 | constant_byte_offset) -> leaf value written by the awrtbari.
-    // Populated by constrainWrtBar; consumed by constrainAloadi.
+    // populated by constrainWrtBar, consumed by constrainAloadi.
     CS2::HashTable<uint64_t, TR::Node *, TR::Allocator> _arraySlotValueMap;
 
-    // Same key -> treetop of the awrtbari.  Set to NULL when a second store hits the
+    // (anewarray_VN << 32 | constant_byte_offset) -> treetop of the awrtbari.  Set to NULL when a second store hits the
     // same slot, preventing removal of either store.
     CS2::HashTable<uint64_t, TR::TreeTop *, TR::Allocator> _arraySlotStoreTTMap;
 
-    // arrayVN -> list of awrtbari treetops queued for deferred removal.  Nulled by
-    // removeArrayForwardingEntries so in-flight escape detection can cancel them.
+    // arrayVN -> list of awrtbari treetops queued for deferred removal.
     CS2::HashTable<uint32_t, TR_ScratchList<TR::TreeTop> *, TR::Allocator> _forwardedStoreTreesToRemove;
 
     // arrayVN -> list of astore-to-local treetops that hold the live anewarray.
-    // Removed alongside the awrtbari stores when the allocation is eliminated.
     CS2::HashTable<uint32_t, TR_ScratchList<TR::TreeTop> *, TR::Allocator> _forwardedLocalStoreTreesToRemove;
 
-    // A fresh anewarray for a cold (guard-failure/OSR) block, to replace the warm-block
-    // original that escapes through a call there.  Everything is deferred: in
-    // doDelayedTransformations, if the warm original survived (its _liveAnewarrays entry
-    // is still non-NULL), the treetop is inserted and the call arg is redirected;
-    // otherwise the whole rebuild is discarded (the warm array was invalidated).
+    // stores the values that must be re-written to a new array in cold blocks
     struct ColdArrayRebuild {
         TR_ALLOC(TR_Memory::ValuePropagation)
 
@@ -1030,7 +1022,8 @@ public:
         int32_t      _argIndex;       // index of the arg to redirect
         uint32_t     _origArrayVN;    // VN of the warm-path original
 
-        // constant byte offset -> forwarded value (leaf or temp load), snapshotted at the call.
+        // the values stored to the original array, keyed by the offset into the array.
+        // stores a temp slot load node when the value is a non-leaf node, or the value itself when its a leaf node
         CS2::HashTable<int64_t, TR::Node *, TR::Allocator> _slotValues;
     };
 

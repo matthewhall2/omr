@@ -3040,8 +3040,9 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
             TR::Node *arrNode  = vp->_liveAnewarrays[liveIdx];
             TR::Node *valueChild = node->getChild(1);
 
+            // The value forwarded to aloadi's and also used to fill the cold-block clone:
+            // a leaf (const/parm/single-def auto) or a load of the privatisation temp.
             TR::Node *forwardedValue = NULL;
-            TR::Node *coldFillValue = NULL;
 
             if (valueChild->getNumChildren() == 0) {
                 // must have unique def
@@ -3082,8 +3083,6 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                     // parm aload, aconst, constRef aload — always safe to forward directly
                     forwardedValue = valueChild;
                 }
-                // Leaf values are always safe to use directly in the cold block.
-                coldFillValue = forwardedValue;
             } else {
                 // Non-leaf value: check if an existing auto temp already stores it in
                 // this block; if so reuse that temp, otherwise privatise into a new one.
@@ -3132,9 +3131,6 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
 
                 forwardedValue = TR::Node::createWithSymRef(TR::aload, 0, tempSymRef);
                 forwardedValue->setReferenceCount(1);
-
-                // Cold block loads from the temp.
-                coldFillValue = forwardedValue;
             }
 
             if (forwardedValue != NULL) {
@@ -3148,7 +3144,6 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                 CS2::HashIndex fwdIdx;
                 if (!vp->_arraySlotValueMap.Locate(key, fwdIdx)) {
                     vp->_arraySlotValueMap.Add(key, forwardedValue);
-                    vp->_arraySlotColdValueMap.Add(key, coldFillValue != forwardedValue ? coldFillValue : NULL);
                     vp->_arraySlotStoreTTMap.Add(key, vp->_curTree);
                     if (vp->trace())
                         logprintf(vp->trace(), vp->comp()->log(),
@@ -4154,10 +4149,6 @@ static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *ar
             cancelledValue = vp->_arraySlotValueMap[idx];
             vp->_arraySlotValueMap[idx] = NULL;
             }
-
-        CS2::HashIndex coldIdx;
-        if (vp->_arraySlotColdValueMap.Locate(k, coldIdx))
-            vp->_arraySlotColdValueMap[coldIdx] = NULL;
 
         CS2::HashIndex storeIdx;
         if (vp->_arraySlotStoreTTMap.Locate(k, storeIdx))
@@ -5175,8 +5166,10 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
                 uint32_t origArrayVN = (uint32_t)argVN;
                 OMR::ValuePropagation::ColdArrayRebuild *rebuild
                     = new (vp->trHeapMemory()) OMR::ValuePropagation::ColdArrayRebuild(
-                        newArrTT, vp->_curTree, node, i, arrNode,
-                        origArrayVN, vp->trMemory());
+                        newArrTT, vp->_curTree, node, i, origArrayVN, vp->comp()->allocator());
+
+                // Snapshot the slots forwarded so far: only stores that precede this call
+                // may be replayed into the cold clone.
                 auto slotCursor = CS2::HashTable<uint64_t, TR::Node *, TR::Allocator>::Cursor(vp->_arraySlotValueMap);
                 for (slotCursor.SetToFirst(); slotCursor.Valid(); slotCursor.SetToNext()) {
                     uint64_t slotKey = vp->_arraySlotValueMap.KeyAt(slotCursor);
@@ -5184,13 +5177,7 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
                     if ((slotKey >> 32) != origArrayVN || slotValue == NULL)
                         continue;
                     int64_t slotOffset = (int64_t)(int32_t)(uint32_t)(slotKey & 0xffffffffu);
-                    TR::Node *coldVal = NULL;
-                    CS2::HashIndex coldIdx;
-                    if (vp->_arraySlotColdValueMap.Locate(slotKey, coldIdx))
-                        coldVal = vp->_arraySlotColdValueMap[coldIdx];
-
-                    rebuild->_slots.add(new (vp->trHeapMemory()) OMR::ValuePropagation::ForwardedSlot(
-                        slotOffset, slotValue, coldVal));
+                    rebuild->_slotValues.Add(slotOffset, slotValue);
                 }
 
                 vp->_coldArrayRebuilds.add(rebuild);

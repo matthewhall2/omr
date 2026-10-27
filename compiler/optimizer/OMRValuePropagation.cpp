@@ -6652,18 +6652,16 @@ void OMR::ValuePropagation::doDelayedTransformations()
                     rebuild->_callNode->getGlobalIndex());
 
             TR::TreeTop *insertAfter = rebuild->_anewarrayTT;
-            ListIterator<ForwardedSlot> slotIt(&rebuild->_slots);
-            for (ForwardedSlot *slot = slotIt.getFirst(); slot; slot = slotIt.getNext())
+            auto slotCursor = CS2::HashTable<int64_t, TR::Node *, TR::Allocator>::Cursor(rebuild->_slotValues);
+            for (slotCursor.SetToFirst(); slotCursor.Valid(); slotCursor.SetToNext())
                 {
+                int64_t slotOffset = rebuild->_slotValues.KeyAt(slotCursor);
                 TR::Node *offsetNode = is64
-                    ? TR::Node::lconst(newArr, slot->_offset)
-                    : TR::Node::iconst(newArr, (int32_t)slot->_offset);
+                    ? TR::Node::lconst(newArr, slotOffset)
+                    : TR::Node::iconst(newArr, (int32_t)slotOffset);
                 TR::Node *addrNode = TR::Node::create(newArr, is64 ? TR::aladd : TR::aiadd, 2, newArr, offsetNode);
-                TR::Node *valueNode = slot->_coldFillValue
-                    ? slot->_coldFillValue->duplicateTree()
-                    : TR::Node::copy(slot->_value);
-                if (valueNode)
-                    markHeapificationAllocs(valueNode);
+                TR::Node *valueNode = rebuild->_slotValues[slotCursor]->duplicateTree();
+                markHeapificationAllocs(valueNode);
                 TR::Node *storeNode = TR::Node::createWithSymRef(
                     TR::awrtbari, 3, 3, addrNode, valueNode, newArr, shadowSymRef);
 
@@ -6681,7 +6679,7 @@ void OMR::ValuePropagation::doDelayedTransformations()
                 if (trace())
                     logprintf(trace(), log,
                         "VP ARRAY FORWARD:   (delayed) cold-block store n%dn at offset %lld into new anewarray n%dn\n",
-                        storeNode->getGlobalIndex(), (long long)slot->_offset, newArr->getGlobalIndex());
+                        storeNode->getGlobalIndex(), (long long)slotOffset, newArr->getGlobalIndex());
                 }
             }
         _coldArrayRebuilds.init();
@@ -6754,7 +6752,6 @@ void OMR::ValuePropagation::doDelayedTransformations()
     _forwardedAnewArrayTTs.MakeEmpty();
 
     _arraySlotValueMap.MakeEmpty();
-    _arraySlotColdValueMap.MakeEmpty();
     _arraySlotStoreTTMap.MakeEmpty();
     _liveAnewarrays.MakeEmpty();
 

@@ -993,10 +993,6 @@ public:
     // Populated by constrainWrtBar; consumed by constrainAloadi.
     CS2::HashTable<uint64_t, TR::Node *, TR::Allocator> _arraySlotValueMap;
 
-    // Same key -> cold-path expression template (duplicateTree of the stored value)
-    // used to fill cold-block anewarray clones in doDelayedTransformations.
-    CS2::HashTable<uint64_t, TR::Node *, TR::Allocator> _arraySlotColdValueMap;
-
     // Same key -> treetop of the awrtbari.  Set to NULL when a second store hits the
     // same slot, preventing removal of either store.
     CS2::HashTable<uint64_t, TR::TreeTop *, TR::Allocator> _arraySlotStoreTTMap;
@@ -1009,21 +1005,6 @@ public:
     // Removed alongside the awrtbari stores when the allocation is eliminated.
     CS2::HashTable<uint32_t, TR_ScratchList<TR::TreeTop> *, TR::Allocator> _forwardedLocalStoreTreesToRemove;
 
-    // One forwarded slot: the constant byte offset and the value stored there.
-    struct ForwardedSlot {
-        TR_ALLOC(TR_Memory::ValuePropagation)
-
-        ForwardedSlot(int64_t offset, TR::Node *value, TR::Node *coldFillValue = NULL)
-            : _offset(offset)
-            , _value(value)
-            , _coldFillValue(coldFillValue ? coldFillValue : value)
-        {}
-
-        int64_t   _offset;
-        TR::Node *_value;
-        TR::Node *_coldFillValue;
-    };
-
     // A fresh anewarray for a cold (guard-failure/OSR) block, to replace the warm-block
     // original that escapes through a call there.  Everything is deferred: in
     // doDelayedTransformations, if the warm original survived (its _liveAnewarrays entry
@@ -1034,23 +1015,23 @@ public:
 
         ColdArrayRebuild(TR::TreeTop *anewarrayTT, TR::TreeTop *insertBeforeTT,
                          TR::Node *callNode, int32_t argIndex,
-                         TR::Node *origArrNode, uint32_t origArrayVN, TR_Memory *m)
+                         uint32_t origArrayVN, TR::Allocator allocator)
             : _anewarrayTT(anewarrayTT)
             , _insertBeforeTT(insertBeforeTT)
             , _callNode(callNode)
             , _argIndex(argIndex)
-            , _origArrNode(origArrNode)
             , _origArrayVN(origArrayVN)
-            , _slots(m)
+            , _slotValues(allocator)
         {}
 
         TR::TreeTop *_anewarrayTT;    // uninserted treetop wrapping the cloned anewarray
         TR::TreeTop *_insertBeforeTT; // insert _anewarrayTT before this treetop
         TR::Node    *_callNode;       // the call whose arg is to be redirected
         int32_t      _argIndex;       // index of the arg to redirect
-        TR::Node    *_origArrNode;    // the warm anewarray node (for rc adjustment)
         uint32_t     _origArrayVN;    // VN of the warm-path original
-        TR_ScratchList<ForwardedSlot> _slots;
+
+        // constant byte offset -> forwarded value (leaf or temp load), snapshotted at the call.
+        CS2::HashTable<int64_t, TR::Node *, TR::Allocator> _slotValues;
     };
 
     // Populated by constrainCall; consumed by doDelayedTransformations.

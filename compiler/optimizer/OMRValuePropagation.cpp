@@ -6751,30 +6751,11 @@ void OMR::ValuePropagation::doDelayedTransformations()
         }
     _forwardedStoreTreesToRemove.MakeEmpty();
     _forwardedLocalStoreTreesToRemove.MakeEmpty();
+    _forwardedAnewArrayTTs.MakeEmpty();
 
     _arraySlotValueMap.MakeEmpty();
     _arraySlotColdValueMap.MakeEmpty();
     _arraySlotStoreTTMap.MakeEmpty();
-
-    // Mark surviving warm-block anewarrays as removable.  Cold-block clones are
-    // not in _forwardedAnewArrayTTs and must never get allocationCanBeRemoved.
-    auto liveCursor = CS2::HashTable<int32_t, TR::Node *, TR::Allocator>::Cursor(_liveAnewarrays);
-    for (liveCursor.SetToFirst(); liveCursor.Valid(); liveCursor.SetToNext())
-        {
-        TR::Node *arrNode = _liveAnewarrays[liveCursor];
-        if (arrNode == NULL)
-            continue;
-        int32_t arrayVN = _liveAnewarrays.KeyAt(liveCursor);
-        CS2::HashIndex arrTTIdx;
-        if (!_forwardedAnewArrayTTs.Locate(arrayVN, arrTTIdx))
-            continue; // cold-block clone — skip
-        if (trace())
-            logprintf(trace(), log,
-                "ARRAY STORE-SPREAD ELIMINATION: setting allocationCanBeRemoved on surviving anewarray n%dn\n",
-                arrNode->getGlobalIndex());
-        arrNode->setAllocationCanBeRemoved(true);
-        }
-    _forwardedAnewArrayTTs.MakeEmpty();
     _liveAnewarrays.MakeEmpty();
 
     // Execute deferred aloadi rewrites (queued during the GVP walk; done here

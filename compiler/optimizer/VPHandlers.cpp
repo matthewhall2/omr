@@ -3040,7 +3040,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
             TR::Node *valueChild = node->getChild(1);
 
             // The value forwarded to aloadi's and also used to fill the cold-block clone:
-            // a leaf (const/parm/single-def auto) or a load of the privatisation temp.
+            // a leaf (const/parm/single-def auto) or a load from the temp the original value is stored to.
             TR::Node *forwardedValue = NULL;
 
             if (valueChild->getNumChildren() == 0) {

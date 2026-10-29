@@ -3040,101 +3040,37 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
             TR::Node *valueChild = node->getChild(1);
 
             // The value forwarded to aloadi's and also used to fill the cold-block clone:
-            // a leaf (const/parm/single-def auto) or a load from the temp the original value is stored to.
+            // a constant/address (immutable, forwarded directly) or a load from a temp.
             TR::Node *forwardedValue = NULL;
 
-            if (valueChild->getNumChildren() == 0) {
-                if (valueChild->getOpCode().isLoadVarDirect()
-                    && valueChild->getOpCode().hasSymbolReference()
-                    && valueChild->getSymbol()->isAutoOrParm())
-                    {
-                    // The load is re-evaluated later (at a forwarded aloadi, or in a cold block),
-                    // so it must have a unique reaching def.  For an auto the def must be a real
-                    // store (an entry def means uninitialised).  For a parm the entry def is the
-                    // incoming argument, which is also a valid unique def.
-                    const bool isParm = valueChild->getSymbol()->isParm();
-                    bool skipValue = true;
-                    TR_UseDefInfo *useDefInfo = vp->_useDefInfo;
-                    if (useDefInfo) {
-                        uint16_t valUseIdx = valueChild->getUseDefIndex();
-                        if (useDefInfo->isUseIndex(valUseIdx)) {
-                            TR_UseDefInfo::BitVector valDefs(vp->comp()->allocator());
-                            if (useDefInfo->getUseDef(valDefs, valUseIdx)
-                                && valDefs.PopulationCount() == 1) {
-                                TR_UseDefInfo::BitVector::Cursor vc(valDefs);
-                                vc.SetToFirstOne();
-                                if (isParm || (int32_t)vc >= useDefInfo->getFirstRealDefIndex())
-                                    skipValue = false;
-                            }
-                        }
-                    }
-                    if (skipValue) {
-                        if (vp->trace())
-                            logprintf(vp->trace(), vp->comp()->log(),
-                                "ARRAY STORE-SPREAD ELIMINATION   skip n%dn: value n%dn is aload of %s with ambiguous def\n",
-                                node->getGlobalIndex(), valueChild->getGlobalIndex(), isParm ? "Parm" : "Auto");
-                        // valueChild is ambiguous; skip this slot entirely
-                    } else {
-                        if (vp->trace())
-                            logprintf(vp->trace(), vp->comp()->log(),
-                                "ARRAY STORE-SPREAD ELIMINATION   value n%dn is aload of single-def %s — forwarding directly\n",
-                                valueChild->getGlobalIndex(), isParm ? "Parm" : "Auto");
-                        forwardedValue = valueChild;
-                    }
-                } else if (valueChild->getOpCode().isLoadConst()
-                           || valueChild->getOpCodeValue() == TR::loadaddr) {
-                    // constants and addresses of symbols never change
-                    forwardedValue = valueChild;
-                } else if (vp->trace()) {
+            if (valueChild->getOpCode().isLoadConst()
+                || valueChild->getOpCodeValue() == TR::loadaddr) {
+                // Constants and addresses of symbols never change and can be forwarded directly.
+                forwardedValue = valueChild;
+                if (vp->trace())
                     logprintf(vp->trace(), vp->comp()->log(),
-                        "ARRAY STORE-SPREAD ELIMINATION   skip n%dn: value n%dn is a mutable leaf %s\n",
-                        node->getGlobalIndex(), valueChild->getGlobalIndex(), valueChild->getOpCode().getName());
-                }
+                        "ARRAY STORE-SPREAD ELIMINATION   value n%dn is immutable %s — forwarding directly\n",
+                        valueChild->getGlobalIndex(), valueChild->getOpCode().getName());
             } else {
-                // Non-leaf value: check if an existing auto temp already stores it in
-                // this block; if so reuse that temp, otherwise privatise into a new one.
-                TR::SymbolReference *tempSymRef = NULL;
-                for (TR::TreeTop *prevTT = vp->_curTree->getPrevTreeTop();
-                        prevTT != NULL && prevTT->getNode()->getOpCodeValue() != TR::BBStart;
-                        prevTT = prevTT->getPrevTreeTop())
-                    {
-                    TR::Node *prevNode = prevTT->getNode();
-                    if (prevNode->getOpCode().isStoreDirect() && prevNode->getOpCode().hasSymbolReference() && prevNode->getSymbol()->isAutoOrParm() && !prevNode->getSymbol()->isParm() && prevNode->getFirstChild() == valueChild) {
-                        tempSymRef = prevNode->getSymbolReference();
-                        if (vp->trace())
-                            logprintf(vp->trace(), vp->comp()->log(),
-                                "ARRAY STORE-SPREAD ELIMINATION   reusing existing temp #%d for non-leaf value n%dn\n",
-                                tempSymRef->getReferenceNumber(),
-                                valueChild->getGlobalIndex());
-                        break;
-                    }
-                    if (prevNode->getOpCode().isCall()
-                        || prevNode->getOpCode().isBranch()
-                        || prevNode->getOpCode().isReturn())
-                        break;
-                    }
+                // Always privatize into a fresh auto temp to guarantee it captures the value at this point and is never modified.
+                TR::SymbolReference *tempSymRef = vp->comp()->getSymRefTab()->createTemporary(
+                    vp->comp()->getMethodSymbol(), TR::Address);
+                TR::Node *astoreNode = TR::Node::createWithSymRef(
+                    TR::astore, 1, 1, valueChild, tempSymRef);
+                TR::TreeTop *astoreTT = TR::TreeTop::create(
+                    vp->comp(), astoreNode, NULL, NULL);
+                vp->_curTree->insertBefore(astoreTT);
 
-                // create new temp if not found
-                if (tempSymRef == NULL) {
-                    tempSymRef = vp->comp()->getSymRefTab()->createTemporary(
-                        vp->comp()->getMethodSymbol(), TR::Address);
-                    TR::Node *astoreNode = TR::Node::createWithSymRef(
-                        TR::astore, 1, 1, valueChild, tempSymRef);
-                    TR::TreeTop *astoreTT = TR::TreeTop::create(
-                        vp->comp(), astoreNode, NULL, NULL);
-                    vp->_curTree->insertBefore(astoreTT);
+                TR::Node *tempLoad = TR::Node::createWithSymRef(TR::aload, 0, tempSymRef);
+                tempLoad->setReferenceCount(1);
+                node->setAndIncChild(1, tempLoad);
+                valueChild->decReferenceCount();
 
-                    TR::Node *tempLoad = TR::Node::createWithSymRef(TR::aload, 0, tempSymRef);
-                    tempLoad->setReferenceCount(1);
-                    node->setAndIncChild(1, tempLoad);
-                    valueChild->decReferenceCount();
-
-                    if (vp->trace())
-                        logprintf(vp->trace(), vp->comp()->log(),
-                            "ARRAY STORE-SPREAD ELIMINATION   privatized non-leaf value n%dn into astore/aload temp #%d\n",
-                            valueChild->getGlobalIndex(),
-                            tempSymRef->getReferenceNumber());
-                }
+                if (vp->trace())
+                    logprintf(vp->trace(), vp->comp()->log(),
+                        "ARRAY STORE-SPREAD ELIMINATION   privatized value n%dn into fresh astore/aload temp #%d\n",
+                        valueChild->getGlobalIndex(),
+                        tempSymRef->getReferenceNumber());
 
                 forwardedValue = TR::Node::createWithSymRef(TR::aload, 0, tempSymRef);
                 forwardedValue->setReferenceCount(1);

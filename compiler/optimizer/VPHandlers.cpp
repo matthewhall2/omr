@@ -3052,11 +3052,12 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                         "ARRAY STORE-SPREAD ELIMINATION   value n%dn is immutable %s — forwarding directly\n",
                         valueChild->getGlobalIndex(), valueChild->getOpCode().getName());
             } else {
-                // Find the source expression to store into the new temp:
                 // If valueChild is an aload of an auto with a single reaching def store,
-                // rebind directly to that store's child expression (def-stealing) rather
-                // than storing the aload node, avoiding an artificial use of the auto.
-                TR::Node *sourceExpr = valueChild;
+                // capture it immediately after that defining store (in the same block)
+                // so the temp captures the value at definition time and is safe from any later redefinition.
+                TR::TreeTop *insertAfterTT = NULL;
+                TR::Node *storedValue = valueChild;
+
                 if (valueChild->getOpCode().isLoadVarDirect()
                     && valueChild->getOpCode().hasSymbolReference()
                     && valueChild->getSymbol()->isAuto()) {
@@ -3069,16 +3070,16 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                             vc.SetToFirstOne();
                             int32_t reachingDefIdx = (int32_t)vc;
                             if (reachingDefIdx >= useDefInfo->getFirstRealDefIndex()) {
-                                TR::Node *defNode = useDefInfo->getNode(reachingDefIdx);
-                                if (defNode && defNode->getOpCode().isStoreDirect() && defNode->getNumChildren() >= 1) {
-                                    sourceExpr = defNode->getFirstChild();
+                                TR::TreeTop *defTT = useDefInfo->getTreeTop(reachingDefIdx);
+                                if (defTT != NULL && defTT->getNode()->getOpCode().isStoreDirect()) {
+                                    insertAfterTT = defTT;
+                                    storedValue = TR::Node::createWithSymRef(
+                                        valueChild->getOpCodeValue(), 0, valueChild->getSymbolReference());
                                     if (vp->trace())
                                         logprintf(vp->trace(), vp->comp()->log(),
-                                            "ARRAY STORE-SPREAD ELIMINATION   rebinding value n%dn (load of Auto '%s') to underlying def n%dn (%s)\n",
-                                            valueChild->getGlobalIndex(),
+                                            "ARRAY STORE-SPREAD ELIMINATION   capturing Auto '%s' right after defining store n%dn\n",
                                             valueChild->getSymbolReference()->getName(vp->comp()->getDebug()),
-                                            sourceExpr->getGlobalIndex(),
-                                            sourceExpr->getOpCode().getName());
+                                            defTT->getNode()->getGlobalIndex());
                                 }
                             }
                         }
@@ -3088,10 +3089,15 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                 TR::SymbolReference *tempSymRef = vp->comp()->getSymRefTab()->createTemporary(
                     vp->comp()->getMethodSymbol(), TR::Address);
                 TR::Node *astoreNode = TR::Node::createWithSymRef(
-                    TR::astore, 1, 1, sourceExpr, tempSymRef);
+                    TR::astore, 1, 1, storedValue, tempSymRef);
                 TR::TreeTop *astoreTT = TR::TreeTop::create(
                     vp->comp(), astoreNode, NULL, NULL);
-                vp->_curTree->insertBefore(astoreTT);
+
+                if (insertAfterTT != NULL) {
+                    insertAfterTT->insertAfter(astoreTT);
+                } else {
+                    vp->_curTree->insertBefore(astoreTT);
+                }
 
                 forwardedValue = TR::Node::createWithSymRef(TR::aload, 0, tempSymRef);
                 forwardedValue->setReferenceCount(1);
@@ -3105,10 +3111,10 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
 
                 if (vp->trace())
                     logprintf(vp->trace(), vp->comp()->log(),
-                        "ARRAY STORE-SPREAD ELIMINATION   privatized value n%dn (source n%dn) into fresh astore/aload temp #%d\n",
+                        "ARRAY STORE-SPREAD ELIMINATION   privatized value n%dn into fresh astore/aload temp #%d (%s)\n",
                         valueChild->getGlobalIndex(),
-                        sourceExpr->getGlobalIndex(),
-                        tempSymRef->getReferenceNumber());
+                        tempSymRef->getReferenceNumber(),
+                        insertAfterTT ? "inserted after def store" : "inserted before wrtbar");
             }
 
             if (forwardedValue != NULL) {

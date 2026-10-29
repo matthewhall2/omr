@@ -74,6 +74,7 @@
 #include "optimizer/PreExistence.hpp"
 #include "optimizer/TransformUtil.hpp"
 #include "optimizer/UseDefInfo.hpp"
+#include "optimizer/ValueNumberInfo.hpp"
 #include "optimizer/VPConstraint.hpp"
 #include "optimizer/ValuePropagation.hpp"
 #include "ras/Debug.hpp"
@@ -3102,7 +3103,12 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                 forwardedValue = TR::Node::createWithSymRef(TR::aload, 0, tempSymRef);
                 forwardedValue->setReferenceCount(1);
 
-                // Preserve constraints from the original value child onto the forwarded load
+                // Copy value number and constraints from the original value child
+                if (vp->_isGlobalPropagation && vp->_valueNumberInfo != NULL) {
+                    vp->_valueNumberInfo->setValueNumber(astoreNode, storedValue);
+                    vp->_valueNumberInfo->setValueNumber(forwardedValue, storedValue);
+                }
+
                 bool isGlobal = false;
                 TR::VPConstraint *c = vp->getConstraint(valueChild, isGlobal);
                 if (c != NULL) {

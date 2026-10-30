@@ -3053,11 +3053,14 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                         "ARRAY STORE-SPREAD ELIMINATION   value n%dn is immutable %s — forwarding directly\n",
                         valueChild->getGlobalIndex(), valueChild->getOpCode().getName());
             } else {
-                // If valueChild is an aload of an auto with a single reaching def store,
-                // capture it immediately after that defining store (in the same block)
-                // so the temp captures the value at definition time and is safe from any later redefinition.
-                TR::TreeTop *insertAfterTT = NULL;
-                TR::Node *storedValue = valueChild;
+                // Determine the anchor treetop after which the temp astore will be
+                // inserted (deferred to doDelayedTransformations):
+                //   - aload of single-def auto  → insert after its defining store
+                //   - anything else             → insert immediately before the wrtbari
+                //                                 (i.e. after its predecessor treetop)
+                TR::TreeTop *anchorTT = vp->_curTree->getPrevTreeTop();
+                TR::Node    *storedValue = valueChild;
+                bool         anchoredAtDef = false;
 
                 if (valueChild->getOpCode().isLoadVarDirect()
                     && valueChild->getOpCode().hasSymbolReference()
@@ -3073,7 +3076,8 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                             if (reachingDefIdx >= useDefInfo->getFirstRealDefIndex()) {
                                 TR::TreeTop *defTT = useDefInfo->getTreeTop(reachingDefIdx);
                                 if (defTT != NULL && defTT->getNode()->getOpCode().isStoreDirect()) {
-                                    insertAfterTT = defTT;
+                                    anchorTT       = defTT;
+                                    anchoredAtDef  = true;
                                     storedValue = TR::Node::createWithSymRef(
                                         valueChild->getOpCodeValue(), 0, valueChild->getSymbolReference());
                                     if (vp->trace())
@@ -3094,11 +3098,10 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                 TR::TreeTop *astoreTT = TR::TreeTop::create(
                     vp->comp(), astoreNode, NULL, NULL);
 
-                if (insertAfterTT != NULL) {
-                    insertAfterTT->insertAfter(astoreTT);
-                } else {
-                    vp->_curTree->insertBefore(astoreTT);
-                }
+                // Defer the insertion to doDelayedTransformations so that
+                // tree-top mutations happen after the GVP walk is complete.
+                vp->_pendingAstoreInsertions.add(
+                    new (vp->trHeapMemory()) OMR::ValuePropagation::VPTreeTopPair(anchorTT, astoreTT));
 
                 forwardedValue = TR::Node::createWithSymRef(TR::aload, 0, tempSymRef);
                 forwardedValue->setReferenceCount(1);
@@ -3120,7 +3123,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                         "ARRAY STORE-SPREAD ELIMINATION   privatized value n%dn into fresh astore/aload temp #%d (%s)\n",
                         valueChild->getGlobalIndex(),
                         tempSymRef->getReferenceNumber(),
-                        insertAfterTT ? "inserted after def store" : "inserted before wrtbar");
+                        anchoredAtDef ? "after def store" : "before wrtbar");
             }
 
             if (forwardedValue != NULL) {
@@ -4204,10 +4207,12 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
             if (arrayClass
                 && !disableArrayStoreSpreadElimination
                 && vp->_isGlobalPropagation
-                && sizeConstraint->getLowInt() == sizeConstraint->getHighInt()
-                && !isGuardFailureOrOSRBlock(vp)) {
+                && sizeNode->getOpCode().isLoadConst()
+                && sizeNode->getInt() <= 3
+                && sizeNode->getInt() > 0
                 // Only track warm-block anewarrays.  Cold-block clones created by constrainCall
-                // are real allocations; re-tracking them would grow the IL unboundedly.
+                // are real allocations; re-tracking them would grow the IL unboundedly on subsequent gvp passes.
+                && !isGuardFailureOrOSRBlock(vp)) {
                 int32_t arrayVN = vp->getValueNumber(node);
                 CS2::HashIndex liveIdx;
                 if (!vp->_liveAnewarrays.Locate(arrayVN, liveIdx))

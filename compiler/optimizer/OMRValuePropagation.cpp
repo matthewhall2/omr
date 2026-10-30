@@ -6755,6 +6755,20 @@ void OMR::ValuePropagation::doDelayedTransformations()
     _arraySlotStoreTTMap.MakeEmpty();
     _liveAnewarrays.MakeEmpty();
 
+    // Execute deferred astore insertions (queued during the GVP walk to avoid
+    // mutating the treetop list while the walk is in progress).
+    ListIterator<VPTreeTopPair> astoreIt(&_pendingAstoreInsertions);
+    for (VPTreeTopPair *p = astoreIt.getFirst(); p; p = astoreIt.getNext())
+        {
+        p->_treetop1->insertAfter(p->_treetop2);
+        if (trace())
+            logprintf(trace(), log,
+                "ARRAY STORE-SPREAD ELIMINATION   (delayed) inserted astore n%dn after n%dn\n",
+                p->_treetop2->getNode()->getGlobalIndex(),
+                p->_treetop1->getNode()->getGlobalIndex());
+        }
+    _pendingAstoreInsertions.init();
+
     // Execute deferred aloadi rewrites (queued during the GVP walk; done here
     // so removeChildren cannot call setUseDefInfo(NULL) while the walk's cached
     // pointer is still live).

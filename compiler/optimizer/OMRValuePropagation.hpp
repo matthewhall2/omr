@@ -1036,6 +1036,11 @@ public:
     // while the walk's cached pointer is still live.
     TR_ScratchList<TR_Pair<TR::Node, TR::Node>> _pendingAloadiRecreates;
 
+    // Deferred astore insertions: _treetop1 is the treetop after which to insert,
+    // _treetop2 is the astore treetop to insert.  Populated during the GVP walk;
+    // executed by doDelayedTransformations.
+    TR_ScratchList<VPTreeTopPair> _pendingAstoreInsertions;
+
     // Flags
     //
     bool lastTimeThrough() { return _lastTimeThrough; }

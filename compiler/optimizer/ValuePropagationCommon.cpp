@@ -150,7 +150,7 @@ OMR::ValuePropagation::ValuePropagation(TR::OptimizationManager *manager)
     , _forwardedLocalStoreTreesToRemove(comp()->allocator())
     , _coldArrayRebuilds(trMemory())
     , _pendingAloadiRecreates(trMemory())
-    , _pendingAstoreInsertions(trMemory())
+    , _pendingAstoreInsertions(comp()->allocator())
 {
     // DANGER !!!
     // Virtual methods on ValuePropagation should only be called when the most derived class of VP's

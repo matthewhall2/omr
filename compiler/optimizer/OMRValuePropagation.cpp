@@ -6757,17 +6757,25 @@ void OMR::ValuePropagation::doDelayedTransformations()
 
     // Execute deferred astore insertions (queued during the GVP walk to avoid
     // mutating the treetop list while the walk is in progress).
-    ListIterator<VPTreeTopPair> astoreIt(&_pendingAstoreInsertions);
-    for (VPTreeTopPair *p = astoreIt.getFirst(); p; p = astoreIt.getNext())
+    // Entries nulled out by removeArrayForwardingEntries are skipped.
+    auto astoreCursor = CS2::HashTable<uint32_t, TR_ScratchList<VPTreeTopPair> *, TR::Allocator>::Cursor(_pendingAstoreInsertions);
+    for (astoreCursor.SetToFirst(); astoreCursor.Valid(); astoreCursor.SetToNext())
         {
-        p->_treetop1->insertAfter(p->_treetop2);
-        if (trace())
-            logprintf(trace(), log,
-                "ARRAY STORE-SPREAD ELIMINATION   (delayed) inserted astore n%dn after n%dn\n",
-                p->_treetop2->getNode()->getGlobalIndex(),
-                p->_treetop1->getNode()->getGlobalIndex());
+        TR_ScratchList<VPTreeTopPair> *astoreList = _pendingAstoreInsertions.DataAt(astoreCursor);
+        if (astoreList == NULL)
+            continue;
+        ListIterator<VPTreeTopPair> astoreIt(astoreList);
+        for (VPTreeTopPair *p = astoreIt.getFirst(); p; p = astoreIt.getNext())
+            {
+            p->_treetop1->insertAfter(p->_treetop2);
+            if (trace())
+                logprintf(trace(), log,
+                    "ARRAY STORE-SPREAD ELIMINATION   (delayed) inserted astore n%dn after n%dn\n",
+                    p->_treetop2->getNode()->getGlobalIndex(),
+                    p->_treetop1->getNode()->getGlobalIndex());
+            }
         }
-    _pendingAstoreInsertions.init();
+    _pendingAstoreInsertions.MakeEmpty();
 
     // Execute deferred aloadi rewrites (queued during the GVP walk; done here
     // so removeChildren cannot call setUseDefInfo(NULL) while the walk's cached

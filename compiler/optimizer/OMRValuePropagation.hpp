@@ -1036,10 +1036,11 @@ public:
     // while the walk's cached pointer is still live.
     TR_ScratchList<TR_Pair<TR::Node, TR::Node>> _pendingAloadiRecreates;
 
-    // Deferred astore insertions: _treetop1 is the treetop after which to insert,
-    // _treetop2 is the astore treetop to insert.  Populated during the GVP walk;
-    // executed by doDelayedTransformations.
-    TR_ScratchList<VPTreeTopPair> _pendingAstoreInsertions;
+    // Deferred astore insertions keyed by array VN.  Each entry is a list of
+    // VPTreeTopPair where _treetop1 is the anchor (insert after) and _treetop2
+    // is the astore treetop to insert.  Populated during the GVP walk; cancelled
+    // per-array by removeArrayForwardingEntries; executed by doDelayedTransformations.
+    CS2::HashTable<uint32_t, TR_ScratchList<VPTreeTopPair> *, TR::Allocator> _pendingAstoreInsertions;
 
     // Flags
     //

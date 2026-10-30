@@ -3100,8 +3100,21 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
 
                 // Defer the insertion to doDelayedTransformations so that
                 // tree-top mutations happen after the GVP walk is complete.
-                vp->_pendingAstoreInsertions.add(
-                    new (vp->trHeapMemory()) OMR::ValuePropagation::VPTreeTopPair(anchorTT, astoreTT));
+                // Keyed by baseVN so removeArrayForwardingEntries can cancel it.
+                {
+                TR_ScratchList<OMR::ValuePropagation::VPTreeTopPair> *astoreList = NULL;
+                CS2::HashIndex astoreListIdx;
+                if (vp->_pendingAstoreInsertions.Locate((uint32_t)baseVN, astoreListIdx))
+                    {
+                    astoreList = vp->_pendingAstoreInsertions[astoreListIdx];
+                    }
+                else
+                    {
+                    astoreList = new (vp->trHeapMemory()) TR_ScratchList<OMR::ValuePropagation::VPTreeTopPair>(vp->trMemory());
+                    vp->_pendingAstoreInsertions.Add((uint32_t)baseVN, astoreList);
+                    }
+                astoreList->add(new (vp->trHeapMemory()) OMR::ValuePropagation::VPTreeTopPair(anchorTT, astoreTT));
+                }
 
                 forwardedValue = TR::Node::createWithSymRef(TR::aload, 0, tempSymRef);
                 forwardedValue->setReferenceCount(1);
@@ -4132,6 +4145,11 @@ static void removeArrayForwardingEntries(OMR::ValuePropagation *vp, TR::Node *ar
     CS2::HashIndex localListIdx;
     if (vp->_forwardedLocalStoreTreesToRemove.Locate(arrayVN, localListIdx))
         vp->_forwardedLocalStoreTreesToRemove[localListIdx] = NULL;
+
+    // Cancel any pending astore insertions for this array.
+    CS2::HashIndex astoreListIdx;
+    if (vp->_pendingAstoreInsertions.Locate(arrayVN, astoreListIdx))
+        vp->_pendingAstoreInsertions[astoreListIdx] = NULL;
 
     for (auto k : toRemove)
         {

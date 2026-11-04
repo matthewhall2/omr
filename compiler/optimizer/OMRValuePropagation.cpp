@@ -6620,7 +6620,9 @@ void OMR::ValuePropagation::doArrayStoreForwardingTransformations()
     OMR::Logger *log = comp()->log();
     OMR::ArrayStoreForwarding &forwarding = _arrayStoreForwarding;
 
-    if (forwarding.isEmpty())
+    if (forwarding.isEmpty()) {
+        if (trace())
+            logprintf(trace(), log, "ARRAY STORE-SPREAD ELIMINATION   (delayed) nothing to insert\n");
         return;
 
     // Abort for any array that does not have every slot written and read.

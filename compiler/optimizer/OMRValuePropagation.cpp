@@ -6624,6 +6624,7 @@ void OMR::ValuePropagation::doArrayStoreForwardingTransformations()
         if (trace())
             logprintf(trace(), log, "ARRAY STORE-SPREAD ELIMINATION   (delayed) nothing to insert\n");
         return;
+    }
 
     // Abort for any array that does not have every slot written and read.
     // Must precede the cold-clone and store-removal steps below, which consult liveness.

@@ -255,7 +255,8 @@ public:
      * \brief Stops tracking an array and cancels all work queued for it.
      *
      * Drops the array's slots, queued store/astore/local-astore removals, pending astore insertions and pending
-     * load rewrites.  Cold-block rebuilds are kept but are discarded in doDelayedTransformations because
+     * load rewrites.  The astores that were created but will now never be inserted release their reference to the
+     * value they store.  Cold-block rebuilds are kept but are discarded in doDelayedTransformations because
      * isLive() is false for the array.
      *
      * \return the \c anewarray node that was invalidated, or NULL if \p arrayVN is not a live array (no change).

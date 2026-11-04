@@ -69,7 +69,14 @@ void OMR::ArrayStoreForwarding::TrackedArray::invalidate()
     _slots.MakeEmpty();
     _forwardedStoreTrees.init();
     _localStoreTrees.init();
+
+    // A pending astore will never be inserted, but creating it incremented the reference count of the value it
+    // stores.  Release that reference, otherwise the value is left with a reference count that exceeds its parents.
+    ListIterator<PendingAstore> astoreIt(&_pendingAstores);
+    for (PendingAstore *p = astoreIt.getFirst(); p; p = astoreIt.getNext())
+        p->_astoreTT->getNode()->removeAllChildren();
     _pendingAstores.init();
+
     _loadRewrites.init();
 }
 

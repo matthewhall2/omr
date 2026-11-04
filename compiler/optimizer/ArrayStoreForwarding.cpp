@@ -29,6 +29,7 @@
 #include "il/TreeTop.hpp"
 #include "il/TreeTop_inlines.hpp"
 #include "infra/Assert.hpp"
+#include "optimizer/Dominators.hpp"
 
 // ---------------------------------------------------------------------------
 // TrackedArray
@@ -119,12 +120,14 @@ OMR::ArrayStoreForwarding::ArrayStoreForwarding(TR::Compilation *comp)
     : _comp(comp)
     , _arrays(comp->allocator())
     , _coldRebuilds(comp->trMemory())
+    , _dominators(NULL)
 {}
 
 void OMR::ArrayStoreForwarding::reset()
 {
     _arrays.MakeEmpty();
     _coldRebuilds.init();
+    _dominators = NULL;
 }
 
 OMR::ArrayStoreForwarding::TrackedArray *OMR::ArrayStoreForwarding::findLive(int32_t arrayVN)
@@ -164,8 +167,7 @@ TR::Node *OMR::ArrayStoreForwarding::getForwardedValue(int32_t arrayVN, int64_t 
     return array->_slots[slotIdx]->_value;
 }
 
-bool OMR::ArrayStoreForwarding::wasStoredInExtendedBlock(int32_t arrayVN, int64_t offset,
-    TR::Block *extendedBlockHead)
+bool OMR::ArrayStoreForwarding::slotStoreDominates(int32_t arrayVN, int64_t offset, TR::Block *loadBlock)
 {
     TrackedArray *array = findLive(arrayVN);
     if (array == NULL)
@@ -174,7 +176,14 @@ bool OMR::ArrayStoreForwarding::wasStoredInExtendedBlock(int32_t arrayVN, int64_
     CS2::HashIndex slotIdx;
     if (!array->_slots.Locate(slotKey(offset), slotIdx))
         return false;
-    return array->_slots[slotIdx]->_storeBlock == extendedBlockHead;
+
+    TR::Block *storeBlock = array->_slots[slotIdx]->_storeBlock;
+    if (storeBlock == loadBlock)
+        return true;
+
+    if (_dominators == NULL)
+        _dominators = new (_comp->trHeapMemory()) TR_Dominators(_comp);
+    return _dominators->dominates(storeBlock, loadBlock) != 0;
 }
 
 TR::Node *OMR::ArrayStoreForwarding::invalidateIfLive(int32_t arrayVN)

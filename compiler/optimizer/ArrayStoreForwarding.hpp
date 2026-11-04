@@ -27,6 +27,8 @@
 #include "env/TRMemory.hpp"
 #include "infra/List.hpp"
 
+class TR_Dominators;
+
 namespace TR {
 class Block;
 class Compilation;
@@ -53,6 +55,8 @@ namespace OMR {
  *     its slots and every queued transformation are discarded and it is never tracked again in this pass.  A
  *     VN that has been registered once is never registered again, whether or not it is still live.
  *   - Slots are keyed by the constant byte offset of the access.
+ *   - A load is only forwarded from a slot's store if the store's block dominates the load's block, since nothing
+ *     else guarantees that the store executed on every path to the load.
  */
 class ArrayStoreForwarding {
 public:
@@ -74,8 +78,8 @@ public:
         /// multiple loads of the same slot do not queue it more than once.
         TR::TreeTop *_storeTT;
 
-        /// Head of the extended block that contains the store.  A load is only forwarded from the store if it is in
-        /// the same extended block, since nothing else guarantees that the store executed on every path to the load.
+        /// Block that contains the store.  A load is only forwarded from the store if this block dominates the load's
+        /// block, since nothing else guarantees that the store executed on every path to the load.
         TR::Block *_storeBlock;
 
         /// A load of this slot has been queued for forwarding.
@@ -245,9 +249,17 @@ public:
      */
     TR::Node *getForwardedValue(int32_t arrayVN, int64_t offset);
 
-    /// \return \c true if the slot's store is in the extended block headed by \p extendedBlockHead.
-    ///         Only meaningful when getForwardedValue() returned non-NULL for the same slot.
-    bool wasStoredInExtendedBlock(int32_t arrayVN, int64_t offset, TR::Block *extendedBlockHead);
+    /**
+     * \brief Determines whether the store to a slot is guaranteed to have executed before \p loadBlock.
+     *
+     * That is the case if the store is in \p loadBlock or if the store's block dominates \p loadBlock.  Exception
+     * edges count as edges, so a catch block that can be entered from before the store is not dominated by it.
+     * The dominator tree is built the first time it is needed, so the CFG must not change until reset().
+     *
+     * \return \c true if the slot's store is known to have executed on every path to \p loadBlock; \c false if not,
+     *         or if \p arrayVN is not a live array or the slot has no recorded store.
+     */
+    bool slotStoreDominates(int32_t arrayVN, int64_t offset, TR::Block *loadBlock);
 
     // ----- Invalidation -----
 
@@ -270,7 +282,7 @@ public:
      *
      * \param value        value forwarded to loads of the slot (a constant, an address, or a load from a temp)
      * \param storeTT      treetop of the awrtbari
-     * \param storeBlock   head of the extended block that contains the store
+     * \param storeBlock   block that contains the store
      * \return \c true if the store was recorded.  \c false if the slot was already written; the array has then been
      *         invalidated, since neither store can be removed.
      */
@@ -322,6 +334,9 @@ private:
     TR::Compilation *_comp;
     ArrayTable _arrays;
     TR_ScratchList<ColdArrayRebuild> _coldRebuilds;
+
+    /// Built on demand by slotStoreDominates(); NULL until then and after reset().
+    TR_Dominators *_dominators;
 };
 
 } // namespace OMR

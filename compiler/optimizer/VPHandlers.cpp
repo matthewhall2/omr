@@ -1881,17 +1881,15 @@ TR::Node *constrainAloadi(OMR::ValuePropagation *vp, TR::Node *node)
 
         TR::Node *storedValue = vp->_arrayStoreForwarding.getForwardedValue(arrayVN, offset);
 
-        // Only forward within the extended block that holds the store.  Nothing else guarantees that the store ran
-        // on every path to this load (e.g. a store on one branch and a load after the merge, or a store skipped by
-        // an exception edge), so otherwise abandon the whole array.
-        if (storedValue != NULL
-            && !vp->_arrayStoreForwarding.wasStoredInExtendedBlock(arrayVN, offset,
-                vp->_curBlock->startOfExtendedBlock())) {
+        // Only forward if the store dominates this load.  Otherwise nothing guarantees that the store ran on every
+        // path to this load (e.g. a store on one branch and a load after the merge, or a store skipped by an
+        // exception edge), so abandon the whole array.
+        if (storedValue != NULL && !vp->_arrayStoreForwarding.slotStoreDominates(arrayVN, offset, vp->_curBlock)) {
             TR::Node *arrNode = vp->_arrayStoreForwarding.invalidateIfLive(arrayVN);
             if (arrNode != NULL && vp->trace())
                 logprintf(vp->trace(), vp->comp()->log(),
-                    "ARRAY STORE-SPREAD ELIMINATION   aloadi n%dn is in block_%d, outside the extended block of "
-                    "the slot store — invalidating anewarray n%dn\n",
+                    "ARRAY STORE-SPREAD ELIMINATION   aloadi n%dn is in block_%d, which the slot store does not "
+                    "dominate — invalidating anewarray n%dn\n",
                     node->getGlobalIndex(), vp->_curBlock->getNumber(), arrNode->getGlobalIndex());
             storedValue = NULL;
         }
@@ -3069,7 +3067,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                     = offsetNode->getOpCode().isLong() ? offsetNode->getLongInt() : (int64_t)offsetNode->getInt();
 
                 if (vp->_arrayStoreForwarding.recordSlotStore(baseVN, offset, forwardedValue, vp->_curTree,
-                        vp->_curBlock->startOfExtendedBlock())) {
+                        vp->_curBlock)) {
                     if (vp->trace())
                         logprintf(vp->trace(), vp->comp()->log(),
                             "ARRAY STORE-SPREAD ELIMINATION   mapped [anewarray n%dn VN=%d offset %lld] -> value "

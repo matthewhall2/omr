@@ -2983,7 +2983,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
             TR::Node *valueChild = node->getChild(1);
 
             // The value forwarded to aloadi's and also used to fill the cold-block clone:
-            // a constant/address (immutable, forwarded directly) or a load from a temp.
+            // a constant/address (immutable, forwarded directly), or a load from a temp.
             TR::Node *forwardedValue = NULL;
 
             if (valueChild->getOpCode().isLoadConst() || valueChild->getOpCodeValue() == TR::loadaddr) {
@@ -4025,11 +4025,7 @@ TR::Node *constrainVariableNewArray(OMR::ValuePropagation *vp, TR::Node *node)
     return node;
 }
 
-// Conservative backstop for array store-spread elimination.  Escape detection in the individual handlers only covers
-// the node types they know about; any other use of a tracked array (arraycopy, instanceof, monent, athrow, a store
-// with a non-constant offset, a null store that canRemoveWrtBar rewrote to astorei, ...) would otherwise be left
-// reading an anewarray / local astore that doDelayedTransformations is about to delete.
-//
+// Conservative backstop for array store-spread elimination.
 // Called from launchNode after the handler for 'node' has run.  A tracked array is invalidated unless 'node' uses it
 // in one of the patterns that the elimination understands and rewrites.
 void checkArrayStoreSpreadEscapes(OMR::ValuePropagation *vp, TR::Node *node)

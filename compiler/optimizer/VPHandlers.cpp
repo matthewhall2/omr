@@ -4130,7 +4130,6 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                 // Only track warm-block anewarrays.  Cold-block clones created by constrainCall
                 // are real allocations; re-tracking them would grow the IL unboundedly on subsequent gvp passes.
                 && !isGuardFailureOrOSRBlock(vp)) {
-                node->setAllocationCanBeRemoved(true);
                 int32_t arrayVN = vp->getValueNumber(node);
                 if (vp->_arrayStoreForwarding.registerArray(arrayVN, node, vp->_curTree)) {
                     if (vp->trace())
@@ -4138,6 +4137,7 @@ TR::Node *constrainANewArray(OMR::ValuePropagation *vp, TR::Node *node)
                             "ARRAY STORE-SPREAD ELIMINATION registered anewarray n%dn VN=%d for forwarding\n",
                             node->getGlobalIndex(), arrayVN);
                 }
+                node->setAllocationCanBeRemoved(true);
             } else if (arrayClass) {
                 node->setAllocationCanBeRemoved(true);
             }

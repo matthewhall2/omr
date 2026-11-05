@@ -6613,15 +6613,14 @@ static void markHeapificationAllocs(TR::Node *node)
         markHeapificationAllocs(node->getChild(i));
 }
 
-// Array store-spread elimination.  Runs first in doDelayedTransformations, after the walk is complete: it is the only
-// place where the IL is mutated on behalf of the optimization.
+// Array store-spread elimination
+// all transformations done here, never in GVP.
 void OMR::ValuePropagation::doArrayStoreForwardingTransformations()
 {
     OMR::Logger *log = comp()->log();
     OMR::ArrayStoreForwarding &forwarding = _arrayStoreForwarding;
 
     // Abort for any array that does not have every slot written and read.
-    // Must precede the cold-clone and store-removal steps below, which consult liveness.
     OMR::ArrayStoreForwarding::LiveArrayIterator liveIt(forwarding);
     for (OMR::ArrayStoreForwarding::TrackedArray *array = liveIt.getFirst(); array; array = liveIt.getNext()) {
         int32_t numSlots, written, read;
@@ -6635,7 +6634,7 @@ void OMR::ValuePropagation::doArrayStoreForwardingTransformations()
         forwarding.invalidateIfLive(array->getArrayVN());
     }
 
-    // Nothing was registered, or every registered array was invalidated (during the walk or just above).
+    // Nothing was registered, or every registered array was invalidated above
     if (liveIt.getFirst() == NULL) {
         if (trace())
             logprintf(trace(), log, "ARRAY STORE-SPREAD ELIMINATION   (delayed) nothing inserted\n");
@@ -6643,17 +6642,11 @@ void OMR::ValuePropagation::doArrayStoreForwardingTransformations()
         return;
     }
 
-    // For each cold-block clone: if the warm array survived, insert the anewarray
-    // treetop, redirect the call arg, and inject fill stores.  If the warm array was
-    // invalidated by a later warm-path escape, discard the rebuild entirely.
-    // Must run before the store-removal loop so forwarded value nodes are still intact.
+    // if the array survived, insert the anewarray treetop, redirect the call arg, and inject fill stores
     const bool is64 = comp()->target().is64Bit();
     TR::SymbolReference *shadowSymRef = comp()->getSymRefTab()->findOrCreateArrayShadowSymbolRef(TR::Address);
     ListIterator<OMR::ArrayStoreForwarding::ColdArrayRebuild> rebuildIt(&forwarding.getColdRebuilds());
-    for (OMR::ArrayStoreForwarding::ColdArrayRebuild *rebuild = rebuildIt.getFirst(); rebuild;
-         rebuild = rebuildIt.getNext()) {
-        // Check whether the warm array survived the GVP walk. There may be multiple arrays tracked so we must check
-        // each array
+    for (OMR::ArrayStoreForwarding::ColdArrayRebuild *rebuild = rebuildIt.getFirst(); rebuild; rebuild = rebuildIt.getNext()) {
         if (!forwarding.isLive((int32_t)rebuild->_origArrayVN)) {
             if (trace())
                 logprintf(trace(), log,
@@ -6663,7 +6656,7 @@ void OMR::ValuePropagation::doArrayStoreForwardingTransformations()
             continue;
         }
 
-        // array survived: insert the clone treetop and redirect the call arg.
+        // insert the clone treetop and redirect the call arg.
         rebuild->_insertBeforeTT->insertBefore(rebuild->_anewarrayTT);
         TR::Node *newArr = rebuild->_anewarrayTT->getNode()->getFirstChild();
         rebuild->_callNode->getChild(rebuild->_argIndex)->decReferenceCount();
@@ -6704,12 +6697,8 @@ void OMR::ValuePropagation::doArrayStoreForwardingTransformations()
         }
     }
 
-    // Execute deferred astore insertions (queued during the GVP walk to avoid
-    // mutating the treetop list while the walk is in progress).
-    // Invalidating an array discards its insertions.
-    // Must precede the store-removal loop below: an astore's anchor is frequently a treetop that is removed there
-    // (the anewarray, its local astore, a previous slot's awrtbari or its compressedRefs anchor).  Inserting after a
-    // treetop that has already been removed links the astore to stale pointers and loses it from the treetop list.
+    // Execute deferred astore insertions
+    // these store the array values for non-leaf nodes
     for (OMR::ArrayStoreForwarding::TrackedArray *array = liveIt.getFirst(); array; array = liveIt.getNext()) {
         ListIterator<OMR::ArrayStoreForwarding::PendingAstore> astoreIt(&array->getPendingAstores());
         for (OMR::ArrayStoreForwarding::PendingAstore *p = astoreIt.getFirst(); p; p = astoreIt.getNext()) {
@@ -6720,7 +6709,7 @@ void OMR::ValuePropagation::doArrayStoreForwardingTransformations()
         }
     }
 
-    // Remove the stores, local astores and allocation of every array that survived.
+    // Remove the stores, local astores and allocation of every array
     for (OMR::ArrayStoreForwarding::TrackedArray *array = liveIt.getFirst(); array; array = liveIt.getNext()) {
         ListIterator<TR::TreeTop> fwdIt(&array->getForwardedStoreTrees());
         for (TR::TreeTop *storeTT = fwdIt.getFirst(); storeTT; storeTT = fwdIt.getNext()) {
@@ -6755,9 +6744,8 @@ void OMR::ValuePropagation::doArrayStoreForwardingTransformations()
         TR::TransformUtil::removeTree(comp(), arrTT);
     }
 
-    // Execute deferred aloadi rewrites (queued during the GVP walk; done here
-    // so removeChildren cannot call setUseDefInfo(NULL) while the walk's cached
-    // pointer is still live).
+    // Execute deferred aloadi rewrites
+    // changes array loads to loads from the temp, or replaces with a const
     for (OMR::ArrayStoreForwarding::TrackedArray *array = liveIt.getFirst(); array; array = liveIt.getNext()) {
         ListIterator<OMR::ArrayStoreForwarding::LoadRewrite> rewriteIt(&array->getLoadRewrites());
         for (OMR::ArrayStoreForwarding::LoadRewrite *p = rewriteIt.getFirst(); p; p = rewriteIt.getNext()) {

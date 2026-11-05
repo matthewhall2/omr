@@ -39,9 +39,9 @@ class TreeTop;
 namespace OMR {
 
 /**
- * \brief Book-keeping for array store-spread elimination (a.k.a. array store forwarding) in Value Propagation.
+ * \brief Book-keeping for array store-spread elimination (array store forwarding) in Value Propagation.
  *
- * Small constant-size arrays allocated by a warm-block \c anewarray are tracked.  Every constant-offset
+ * Small constant-size arrays allocated by \c anewarray are tracked.  Every constant-offset
  * \c awrtbari into such an array is recorded as a slot, and every constant-offset \c aloadi of the array is rewritten
  * to the stored value.  If the array never escapes and every slot is both written once and read, the allocation
  * and the stores are removed in ValuePropagation::doDelayedTransformations.
@@ -60,7 +60,7 @@ namespace OMR {
  */
 class ArrayStoreForwarding {
 public:
-    /// The value written to, and the ways the access to, one constant-offset element of a tracked array.
+    // The value written to a constant offset of an array
     struct Slot {
         TR_ALLOC(TR_Memory::ValuePropagation)
 
@@ -71,22 +71,21 @@ public:
             , _wasRead(false)
         {}
 
-        /// Leaf node (or temp load) whose value is forwarded to loads of this slot.
+        // Leaf node (or temp load) whose value is forwarded to loads of this slot
         TR::Node *_value;
 
-        /// Treetop of the awrtbari that wrote the slot.  Set to NULL once it has been queued for removal so that
-        /// multiple loads of the same slot do not queue it more than once.
+        // Treetop of the awrtbari that wrote the slot
         TR::TreeTop *_storeTT;
 
-        /// Block that contains the store.  A load is only forwarded from the store if this block dominates the load's
-        /// block, since nothing else guarantees that the store executed on every path to the load.
+        // Block that contains the store.  A load is only forwarded from the store if this block dominates the load's
+        // block, since nothing else guarantees that the store executed on every path to the load
         TR::Block *_storeBlock;
 
-        /// A load of this slot has been queued for forwarding.
+        // A load of this slot has been queued for forwarding
         bool _wasRead;
     };
 
-    /// An astore of a value to a fresh temp, to be inserted after \c _anchorTT in doDelayedTransformations.
+    // An astore of a value to a fresh temp, to be inserted after _anchorTT in doDelayedTransformations
     struct PendingAstore {
         TR_ALLOC(TR_Memory::ValuePropagation)
 
@@ -99,7 +98,7 @@ public:
         TR::TreeTop *_astoreTT;
     };
 
-    /// An aloadi to be rewritten in place into a copy of \c _value in doDelayedTransformations.
+    // An aloadi to be rewritten in place into a copy of \c _value in doDelayedTransformations
     struct LoadRewrite {
         TR_ALLOC(TR_Memory::ValuePropagation)
 
@@ -112,7 +111,7 @@ public:
         TR::Node *_value;
     };
 
-    /// The values that must be re-written to a fresh array in a cold block that cannot see the warm-path array.
+    // The values that must be re-written to a fresh array in a cold block that cannot see the warm-path array
     struct ColdArrayRebuild {
         TR_ALLOC(TR_Memory::ValuePropagation)
 
@@ -132,11 +131,11 @@ public:
         int32_t _argIndex; // index of the arg to redirect
         uint32_t _origArrayVN; // VN of the warm-path original
 
-        // The values stored to the original array, keyed by the offset into the array.
+        // The values stored to the original array, keyed by the offset into the array
         CS2::HashTable<int64_t, TR::Node *, TR::Allocator> _slotValues;
     };
 
-    /// Everything known about one tracked array.
+    // Everything known about one tracked array.
     class TrackedArray {
     public:
         TR_ALLOC(TR_Memory::ValuePropagation)
@@ -151,10 +150,10 @@ public:
 
         bool isLive() const { return _live; }
 
-        /// awrtbari treetops (and their compressedRefs anchors) that become dead once every load is forwarded.
+        // awrtbari treetops (and their compressedRefs anchors) that become dead once every load is forwarded
         TR_ScratchList<TR::TreeTop> &getForwardedStoreTrees() { return _forwardedStoreTrees; }
 
-        /// astores of the anewarray to a local, dead once the allocation is eliminated.
+        // astores of the anewarray to a local, dead once the allocation is eliminated
         TR_ScratchList<TR::TreeTop> &getLocalStoreTrees() { return _localStoreTrees; }
 
         TR_ScratchList<PendingAstore> &getPendingAstores() { return _pendingAstores; }
@@ -162,13 +161,13 @@ public:
         TR_ScratchList<LoadRewrite> &getLoadRewrites() { return _loadRewrites; }
 
         /**
-         * \brief Checks that removing the allocation is sound.
+         * \brief Checks that removing the allocation is sound
          *
          * Removal requires that no store or load of the array survives, which requires that every slot was written
          * exactly once and read (forwarded) at least once:
-         *   - a slot that is written but never read leaves its awrtbari in the IL pointing at a deleted anewarray;
-         *   - a slot that is read but never written would be forwarded from nothing;
-         *   - a slot that is never touched means the array is not fully accounted for.
+         *   - a slot that is written but never read leaves its awrtbari in the IL pointing at a deleted anewarray
+         *   - a slot that is read but never written would be forwarded from nothing
+         *   - a slot that is never touched means the array is not fully accounted for
          *
          * \param[out] numSlots  number of elements of the array
          * \param[out] written   number of distinct slots written
@@ -182,7 +181,7 @@ public:
 
         typedef CS2::HashTable<int32_t, Slot *, TR::Allocator> SlotTable;
 
-        /// Discards all slots and queued work.  Called by ArrayStoreForwarding::invalidateIfLive.
+        /// Discards all slots and queued work.  Called by ArrayStoreForwarding::invalidateIfLive
         void invalidate();
 
         int32_t _arrayVN;
@@ -196,9 +195,9 @@ public:
         TR_ScratchList<LoadRewrite> _loadRewrites;
     };
 
-    /// Iterates the arrays that are still live, in no particular order.
-    /// Invalidating arrays during iteration is safe: it never adds or removes entries from the set of arrays.
-    /// Registering or reset() during iteration is not.
+    /// Iterates the arrays that are still live, in no particular order
+    /// Invalidating arrays during iteration is safe: it never adds or removes entries from the set of arrays
+    /// Registering or reset() during iteration is not
     class LiveArrayIterator {
     public:
         LiveArrayIterator(ArrayStoreForwarding &forwarding);
@@ -217,14 +216,12 @@ public:
 
     ArrayStoreForwarding(TR::Compilation *comp);
 
-    /// \return \c true if no array has been registered since construction or the last reset().
-    /// Invalidated arrays still count as registered.  This is the cheap test used to skip all other work.
+    // true if no array has been registered since construction or the last reset()
+    // Invalidated arrays still count as registered.  This is the cheap test used to skip all other work.
     bool isEmpty() const { return _arrays.IsEmpty(); }
 
-    /// Forgets every array and every queued transformation.
+    /// Forgets every array and every queued transformation
     void reset();
-
-    // ----- Registration and queries -----
 
     /**
      * \brief Starts tracking an array.
@@ -237,7 +234,7 @@ public:
      */
     bool registerArray(int32_t arrayVN, TR::Node *arrayNode, TR::TreeTop *anewarrayTT);
 
-    /// \return the \c anewarray node if \p arrayVN is a tracked array that has not been invalidated, else NULL.
+    // returns the  anewarray node if arrayVN is a tracked array that has not been invalidated, else NULL.
     TR::Node *getLiveArray(int32_t arrayVN);
 
     bool isLive(int32_t arrayVN) { return getLiveArray(arrayVN) != NULL; }
@@ -261,7 +258,6 @@ public:
      */
     bool slotStoreDominates(int32_t arrayVN, int64_t offset, TR::Block *loadBlock);
 
-    // ----- Invalidation -----
 
     /**
      * \brief Stops tracking an array and cancels all work queued for it.
@@ -275,7 +271,6 @@ public:
      */
     TR::Node *invalidateIfLive(int32_t arrayVN);
 
-    // ----- Recording work for doDelayedTransformations; \p arrayVN must be a live array -----
 
     /**
      * \brief Records the awrtbari that writes a constant-offset slot.
@@ -289,10 +284,10 @@ public:
     bool recordSlotStore(int32_t arrayVN, int64_t offset, TR::Node *value, TR::TreeTop *storeTT,
         TR::Block *storeBlock);
 
-    /// Records a store of the anewarray to a local; it is removed with the allocation.
+    // Records a store of the anewarray to a local; it is removed with the allocation.
     void recordLocalAstore(int32_t arrayVN, TR::TreeTop *storeTT);
 
-    /// Queues \p astoreTT for insertion after \p anchorTT.
+    // Queues astoreTT for insertion after anchorTT.
     void recordPendingAstore(int32_t arrayVN, TR::TreeTop *anchorTT, TR::TreeTop *astoreTT);
 
     /**
@@ -307,7 +302,7 @@ public:
      */
     TR::TreeTop *recordForwardedLoad(int32_t arrayVN, int64_t offset, TR::Node *load);
 
-    /// Queues \p tt for removal along with the array's stores.
+    // Queues tt for removal along with the array's stores.
     void queueStoreRemoval(int32_t arrayVN, TR::TreeTop *tt);
 
     /**
@@ -320,13 +315,13 @@ public:
     void recordColdRebuild(int32_t arrayVN, TR::TreeTop *clonedArrayTT, TR::TreeTop *insertBeforeTT,
         TR::Node *callNode, int32_t argIndex);
 
-    /// Cold-block rebuilds, in doDelayedTransformations.  Includes rebuilds of arrays that were later invalidated.
+    // Cold-block rebuilds, in doDelayedTransformations.  Includes rebuilds of arrays that were later invalidated.
     TR_ScratchList<ColdArrayRebuild> &getColdRebuilds() { return _coldRebuilds; }
 
 private:
     typedef CS2::HashTable<int32_t, TrackedArray *, TR::Allocator> ArrayTable;
 
-    /// Slots are keyed by the 32-bit byte offset of the access.
+    // Slots are keyed by the 32-bit byte offset of the access.
     static int32_t slotKey(int64_t offset) { return (int32_t)(uint32_t)offset; }
 
     TrackedArray *findLive(int32_t arrayVN);

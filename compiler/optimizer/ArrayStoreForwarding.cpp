@@ -31,9 +31,6 @@
 #include "infra/Assert.hpp"
 #include "optimizer/Dominators.hpp"
 
-// ---------------------------------------------------------------------------
-// TrackedArray
-// ---------------------------------------------------------------------------
 
 OMR::ArrayStoreForwarding::TrackedArray::TrackedArray(int32_t arrayVN, TR::Node *arrayNode, TR::TreeTop *anewarrayTT,
     TR::Compilation *comp)
@@ -71,7 +68,7 @@ void OMR::ArrayStoreForwarding::TrackedArray::invalidate()
     _forwardedStoreTrees.init();
     _localStoreTrees.init();
 
-    // A pending astore will never be inserted, but creating it incremented the reference count of the value it
+    // The pending astore will never be inserted, but creating it incremented the reference count of the value it
     // stores.  Release that reference, otherwise the value is left with a reference count that exceeds its parents.
     ListIterator<PendingAstore> astoreIt(&_pendingAstores);
     for (PendingAstore *p = astoreIt.getFirst(); p; p = astoreIt.getNext())
@@ -80,10 +77,6 @@ void OMR::ArrayStoreForwarding::TrackedArray::invalidate()
 
     _loadRewrites.init();
 }
-
-// ---------------------------------------------------------------------------
-// LiveArrayIterator
-// ---------------------------------------------------------------------------
 
 OMR::ArrayStoreForwarding::LiveArrayIterator::LiveArrayIterator(ArrayStoreForwarding &forwarding)
     : _arrays(forwarding._arrays)
@@ -111,10 +104,6 @@ OMR::ArrayStoreForwarding::TrackedArray *OMR::ArrayStoreForwarding::LiveArrayIte
     }
     return NULL;
 }
-
-// ---------------------------------------------------------------------------
-// ArrayStoreForwarding
-// ---------------------------------------------------------------------------
 
 OMR::ArrayStoreForwarding::ArrayStoreForwarding(TR::Compilation *comp)
     : _comp(comp)
@@ -204,7 +193,8 @@ bool OMR::ArrayStoreForwarding::recordSlotStore(int32_t arrayVN, int64_t offset,
 
     CS2::HashIndex slotIdx;
     if (array->_slots.Locate(slotKey(offset), slotIdx)) {
-        // Neither store can be removed, so the array cannot be eliminated.
+        // the array slot is written to more than once. we cannot tell which value is valid
+        // abort the opt for this array
         invalidateIfLive(arrayVN);
         return false;
     }
@@ -266,7 +256,6 @@ void OMR::ArrayStoreForwarding::recordColdRebuild(int32_t arrayVN, TR::TreeTop *
     ColdArrayRebuild *rebuild = new (_comp->trHeapMemory())
         ColdArrayRebuild(clonedArrayTT, insertBeforeTT, callNode, argIndex, (uint32_t)arrayVN, _comp->allocator());
 
-    // Snapshot the slots recorded so far: only stores that precede the call may be replayed into the cold clone.
     TrackedArray::SlotTable::Cursor cursor(array->_slots);
     for (cursor.SetToFirst(); cursor.Valid(); cursor.SetToNext())
         rebuild->_slotValues.Add((int64_t)array->_slots.KeyAt(cursor), array->_slots.DataAt(cursor)->_value);

@@ -1812,21 +1812,30 @@ TR::Node *constrainIloadi(OMR::ValuePropagation *vp, TR::Node *node)
         if (success) {
             int32_t realKonst;
             realKonst = *konst;
-            if (!base->isNonNullObject() && vp->getCurrentParent()->getOpCodeValue() == TR::NULLCHK) {
-                // replace node with a PassThrough in the original tree
-                TR::Node *passThroughNode = TR::Node::create(TR::PassThrough, 1, node->getFirstChild());
-                TR::Node *nullCheckNode = vp->getCurrentParent();
-                nullCheckNode->setAndIncChild(0, passThroughNode);
+            bool needsPassThrough
+                = !base->isNonNullObject() && vp->getCurrentParent()->getOpCodeValue() == TR::NULLCHK;
+            // The PassThrough restructuring is only valid together with the constant fold, so if it is
+            // denied the fold must be skipped as well.
+            if (!needsPassThrough
+                || performTransformation(vp->comp(),
+                    "%sReplacing iloadi [%p] under NULLCHK with PassThrough and a separate treetop\n", OPT_DETAILS,
+                    node)) {
+                if (needsPassThrough) {
+                    // replace node with a PassThrough in the original tree
+                    TR::Node *passThroughNode = TR::Node::create(TR::PassThrough, 1, node->getFirstChild());
+                    TR::Node *nullCheckNode = vp->getCurrentParent();
+                    nullCheckNode->setAndIncChild(0, passThroughNode);
 
-                // create a treetop containing the iloadi following the current tree
-                TR::TreeTop *newTree = TR::TreeTop::create(vp->comp(), TR::Node::create(TR::treetop, 1, node));
-                node->decReferenceCount();
-                TR::TreeTop *prevTree = vp->_curTree;
-                newTree->join(prevTree->getNextTreeTop());
-                prevTree->join(newTree);
+                    // create a treetop containing the iloadi following the current tree
+                    TR::TreeTop *newTree = TR::TreeTop::create(vp->comp(), TR::Node::create(TR::treetop, 1, node));
+                    node->decReferenceCount();
+                    TR::TreeTop *prevTree = vp->_curTree;
+                    newTree->join(prevTree->getNextTreeTop());
+                    prevTree->join(newTree);
+                }
+                vp->replaceByConstant(node, TR::VPIntConst::create(vp, realKonst), true);
+                return node;
             }
-            vp->replaceByConstant(node, TR::VPIntConst::create(vp, realKonst), true);
-            return node;
         }
     }
 
@@ -3162,7 +3171,9 @@ TR::Node *constrainInstanceOf(OMR::ValuePropagation *vp, TR::Node *node)
                         if (objectConstraint->isClassObject() != TR_yes)
                             result = 1;
                     }
-                } else {
+                } else if (performTransformation(vp->comp(),
+                               "%sChanging instanceof [%p] of a possibly null object into acmpne null\n", OPT_DETAILS,
+                               node)) {
                     TR::Node::recreate(node, TR::acmpne);
                     vp->removeNode(node->getChild(1), true);
                     node->setAndIncChild(1, TR::Node::create(node, TR::aconst, 0, 0));
@@ -3228,7 +3239,9 @@ TR::Node *constrainInstanceOf(OMR::ValuePropagation *vp, TR::Node *node)
                             result = 1;
                             logprints(vp->trace(), log,
                                 "object is a non-null classobject and cast is java/lang/Class\n");
-                        } else {
+                        } else if (performTransformation(vp->comp(),
+                                       "%sChanging instanceof [%p] of a possibly null class object into acmpne null\n",
+                                       OPT_DETAILS, node)) {
                             TR::Node::recreate(node, TR::acmpne);
                             vp->removeNode(node->getChild(1), true);
                             node->setAndIncChild(1, TR::Node::create(node, TR::aconst, 0, 0));
@@ -3727,28 +3740,35 @@ TR::Node *constrainVariableNewArray(OMR::ValuePropagation *vp, TR::Node *node)
     if (constraint && constraint->getClassType() && constraint->getClassType()->asFixedClass()
         && constraint->isNonNullObject() && (elementType = constraint->getClass())) {
         if (TR::Compiler->cls.isPrimitiveClass(vp->comp(), elementType)) {
-            TR::Node::recreateWithoutProperties(node, TR::newarray, node->getNumChildren(),
-                vp->comp()->getSymRefTab()->findOrCreateNewArraySymbolRef(
-                    typeNode->getSymbolReference()->getOwningMethodSymbol(vp->comp())));
-            TR::Node *typeConst
-                = TR::Node::create(TR::iconst, 0, vp->comp()->fe()->getNewArrayTypeFromClass(constraint->getClass()));
-            vp->_curTree->insertBefore(OMR::TreeTop::create(vp->comp(), TR::Node::create(TR::treetop, 1, typeNode)));
-            node->setAndIncChild(1, typeConst);
-            typeNode->recursivelyDecReferenceCount();
+            if (performTransformation(vp->comp(), "%sChanging variable newarray [%p] into newarray\n", OPT_DETAILS,
+                    node)) {
+                TR::Node::recreateWithoutProperties(node, TR::newarray, node->getNumChildren(),
+                    vp->comp()->getSymRefTab()->findOrCreateNewArraySymbolRef(
+                        typeNode->getSymbolReference()->getOwningMethodSymbol(vp->comp())));
+                TR::Node *typeConst = TR::Node::create(TR::iconst, 0,
+                    vp->comp()->fe()->getNewArrayTypeFromClass(constraint->getClass()));
+                vp->_curTree->insertBefore(
+                    OMR::TreeTop::create(vp->comp(), TR::Node::create(TR::treetop, 1, typeNode)));
+                node->setAndIncChild(1, typeConst);
+                typeNode->recursivelyDecReferenceCount();
+            }
         }
 #ifdef J9_PROJECT_SPECIFIC
         else {
-            TR::Node::recreateWithoutProperties(node, TR::anewarray, node->getNumChildren(),
-                vp->comp()->getSymRefTab()->findOrCreateANewArraySymbolRef(
-                    typeNode->getSymbolReference()->getOwningMethodSymbol(vp->comp())));
-            if (typeNode->getOpCodeValue() != TR::loadaddr) {
-                TR::Node *loadaddr = TR::Node::createWithSymRef(TR::loadaddr, 0,
-                    vp->comp()->getSymRefTab()->findOrCreateClassSymbol(
-                        typeNode->getSymbolReference()->getOwningMethodSymbol(vp->comp()), 0, elementType));
-                vp->_curTree->insertBefore(
-                    OMR::TreeTop::create(vp->comp(), TR::Node::create(TR::treetop, 1, typeNode)));
-                node->setAndIncChild(1, loadaddr);
-                typeNode->recursivelyDecReferenceCount();
+            if (performTransformation(vp->comp(), "%sChanging variable newarray [%p] into anewarray\n", OPT_DETAILS,
+                    node)) {
+                TR::Node::recreateWithoutProperties(node, TR::anewarray, node->getNumChildren(),
+                    vp->comp()->getSymRefTab()->findOrCreateANewArraySymbolRef(
+                        typeNode->getSymbolReference()->getOwningMethodSymbol(vp->comp())));
+                if (typeNode->getOpCodeValue() != TR::loadaddr) {
+                    TR::Node *loadaddr = TR::Node::createWithSymRef(TR::loadaddr, 0,
+                        vp->comp()->getSymRefTab()->findOrCreateClassSymbol(
+                            typeNode->getSymbolReference()->getOwningMethodSymbol(vp->comp()), 0, elementType));
+                    vp->_curTree->insertBefore(
+                        OMR::TreeTop::create(vp->comp(), TR::Node::create(TR::treetop, 1, typeNode)));
+                    node->setAndIncChild(1, loadaddr);
+                    typeNode->recursivelyDecReferenceCount();
+                }
             }
         }
 #endif
@@ -4674,7 +4694,9 @@ TR::Node *constrainCall(OMR::ValuePropagation *vp, TR::Node *node)
                         && guardNode->isNonoverriddenGuard(),
                     "Should be NonoverriddenGuard");
 
-                if (canFoldNonOverriddenGuard(vp, node, guardNode)) {
+                if (canFoldNonOverriddenGuard(vp, node, guardNode)
+                    && performTransformation(vp->comp(), "%sRemoving non-overridden guard [%p] for call [%p]\n",
+                        OPT_DETAILS, guardNode, node)) {
                     dumpOptDetails(vp->comp(), "can fold this time\n");
                     vp->removeNode(guardNode, false);
                     TR::TransformUtil::removeTree(vp->comp(), treeTop);
@@ -7479,7 +7501,9 @@ static bool constrainWidenToInt(OMR::ValuePropagation *vp, TR::Node *&node, int3
     TR::Node *origNode = node;
     // static const char *p = feGetEnv("TR_ConversionFolder");
     if ( // p &&
-        yankConversionPair) {
+        yankConversionPair
+        && performTransformation(vp->comp(), "%sRemoving redundant conversion pair at node [%p] %s\n", OPT_DETAILS,
+            node, node->getOpCode().getName())) {
         // have to increment the reference count of the grandchild to keep it from
         // being completele removed by removeNode
         grandChild->incReferenceCount();

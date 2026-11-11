@@ -39,6 +39,7 @@
 #include "env/IO.hpp"
 #include "env/ObjectModel.hpp"
 #include "env/PersistentInfo.hpp"
+#include "env/TRFrontEnd.hpp"
 #include "env/TRMemory.hpp"
 #include "env/TypeLayout.hpp"
 #include "env/jittypes.h"
@@ -2643,7 +2644,14 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
 
     if (doOpt && ((gcMode == gc_modron_wrtbar_cardmark_and_oldcheck) || (gcMode == gc_modron_wrtbar_oldcheck))
         && (node->getOpCodeValue() == TR::awrtbari) && !node->skipWrtBar()) {
-        TR::Node *valueChild = node->getChild(2);
+        static bool testChange = feGetEnv("useChild2") != NULL;
+        TR::Node *  valueChild = NULL;
+        if (testChange) {
+            *valueChild = node->getChild(2);
+        } else {
+            valueChild = node->getFirstChild();
+        }
+
         if (valueChild->getOpCode().isArrayRef())
             valueChild = valueChild->getFirstChild();
 

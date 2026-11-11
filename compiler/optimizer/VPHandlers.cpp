@@ -2643,7 +2643,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
 
     if (doOpt && ((gcMode == gc_modron_wrtbar_cardmark_and_oldcheck) || (gcMode == gc_modron_wrtbar_oldcheck))
         && (node->getOpCodeValue() == TR::awrtbari) && !node->skipWrtBar()) {
-        TR::Node *valueChild = node->getFirstChild();
+        TR::Node *valueChild = node->getChild(2);
         if (valueChild->getOpCode().isArrayRef())
             valueChild = valueChild->getFirstChild();
 

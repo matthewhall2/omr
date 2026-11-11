@@ -2753,7 +2753,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
     // let the codegen know so it can generate better sequence.
     if ((node->getOpCodeValue() == TR::awrtbari) && !node->getSymbolReference()->getSymbol()->isArrayShadowSymbol()
         && !vp->comp()->getOption(TR_DisableWriteBarriersRangeCheck)) {
-        TR::Node *objectChild = node->getFirstChild();
+        TR::Node *objectChild = node->getChild(2);
         bool setStackWrtBar = false;
         if ((objectChild->getOpCodeValue() == TR::aload) && objectChild->getSymbolReference()->getSymbol()->isAuto()) {
             TR_UseDefInfo *useDefInfo = vp->_useDefInfo;

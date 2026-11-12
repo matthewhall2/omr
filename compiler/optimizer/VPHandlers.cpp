@@ -2657,18 +2657,33 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
 
         bool removeWrtBar = false;
 
+        // Debug: record the source line of every site that sets removeWrtBar to true so that the
+        // site(s) responsible can be reported when the transformation is performed.
+        int32_t removeWrtBarLines[8];
+        int32_t numRemoveWrtBarLines = 0;
+#define SET_REMOVE_WRTBAR_TRUE()                                                    \
+    do {                                                                            \
+        removeWrtBar = true;                                                        \
+        bool alreadyRecorded = false;                                               \
+        for (int32_t i = 0; i < numRemoveWrtBarLines; i++)                          \
+            if (removeWrtBarLines[i] == __LINE__)                                   \
+                alreadyRecorded = true;                                             \
+        if (!alreadyRecorded && numRemoveWrtBarLines < 8)                           \
+            removeWrtBarLines[numRemoveWrtBarLines++] = __LINE__;                   \
+    } while (0)
+
         if ((valueChild->getOpCodeValue() == TR::New) || (valueChild->getOpCodeValue() == TR::newarray)
             || (valueChild->getOpCodeValue() == TR::anewarray) || (valueChild->getOpCodeValue() == TR::multianewarray)
             || (valueChild && (valueChild->getOpCodeValue() == TR::loadaddr)
                 && valueChild->getSymbolReference()->getSymbol()->isAuto()
                 && valueChild->getSymbolReference()->getSymbol()->isLocalObject()))
-            removeWrtBar = true;
+            SET_REMOVE_WRTBAR_TRUE();
         else if (valueChild->getOpCodeValue() == TR::aload) {
             TR_UseDefInfo *useDefInfo = vp->_useDefInfo;
 
             if (valueChild->isThisPointer()
                 && vp->comp()->getJittedMethodSymbol()->getResolvedMethod()->isConstructor()) {
-                removeWrtBar = true;
+                SET_REMOVE_WRTBAR_TRUE();
 
                 if (vp->_changedThis == TR_maybe) {
                     vp->_changedThis = TR_no;
@@ -2711,7 +2726,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                                     || (defChild && (defChild->getOpCodeValue() == TR::loadaddr)
                                         && defChild->getSymbolReference()->getSymbol()->isAuto()
                                         && defChild->getSymbolReference()->getSymbol()->isLocalObject()))
-                                    removeWrtBar = true;
+                                    SET_REMOVE_WRTBAR_TRUE();
                                 /*
                                  else if (defChild && (defChild->getOpCodeValue() == TR::aload))
                                     {
@@ -2748,8 +2763,12 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
         if (removeWrtBar
             && performTransformation(vp->comp(), "%sChanging wrtbar to store because the rhs is a new object [%p]\n",
                 OPT_DETAILS, node)) {
+            for (int32_t i = 0; i < numRemoveWrtBarLines; i++)
+                dumpOptDetails(vp->comp(), "%s   removeWrtBar set to true at VPHandlers.cpp:%d for node [%p]\n",
+                    OPT_DETAILS, removeWrtBarLines[i], node);
             node->setSkipWrtBar(true);
         }
+#undef SET_REMOVE_WRTBAR_TRUE
     }
 
     // If node is still a write barrier then let's find if it's coming from a new in the same method.

@@ -2734,6 +2734,10 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                                     removeWrtBar = false;
                                     break;
                                 }
+                            } else {
+                                // Any reaching def that is not an astore cannot be shown to be a fresh allocation
+                                removeWrtBar = false;
+                                break;
                             }
                         }
                     }

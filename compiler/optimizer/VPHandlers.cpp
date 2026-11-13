@@ -2608,11 +2608,15 @@ void canRemoveWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
 
 static bool isBlockInsideLoop(OMR::ValuePropagation *vp, TR::Block *block)
 {
-    if (!block || !vp->comp()->getFlowGraph() || !vp->comp()->getFlowGraph()->getStructure())
+    if (!block)
         return false;
 
+    // If CFG structure has not been built yet (e.g. during Local VP), we cannot prove the block is not in a loop.
+    if (!vp->comp()->getFlowGraph() || !vp->comp()->getFlowGraph()->getStructure())
+        return true;
+
     TR_BlockStructure *blockStructure = block->getStructureOf();
-    return (blockStructure && blockStructure->getContainingLoop() != NULL);
+    return (blockStructure == NULL || blockStructure->getContainingLoop() != NULL);
 }
 
 /**
@@ -2680,10 +2684,11 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
 
     auto gcMode = TR::Compiler->om.writeBarrierType();
 
-    // Stores inside loops must always retain write barriers to avoid missing Old -> Young references across GCs
+    // Stores inside loops and array element stores must always retain write barriers to avoid missing Old -> Young references across GCs
     bool isInsideLoop = isBlockInsideLoop(vp, vp->_curBlock);
+    bool isArrayStore = node->getSymbolReference()->getSymbol()->isArrayShadowSymbol();
 
-    if (doOpt && !isInsideLoop
+    if (doOpt && !isInsideLoop && !isArrayStore
         && ((gcMode == gc_modron_wrtbar_cardmark_and_oldcheck) || (gcMode == gc_modron_wrtbar_oldcheck))
         && (node->getOpCodeValue() == TR::awrtbari) && !node->skipWrtBar()) {
         TR::Node *destObject = (node->getNumChildren() >= 3) ? node->getChild(2) : node->getFirstChild();

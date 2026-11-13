@@ -2569,8 +2569,9 @@ void canRemoveWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
     // If the value being stored is known to be null we can replace the write
     // barrier store with a regular store
     //
+    TR::Node *valueChild = node->getOpCode().isIndirect() ? node->getChild(1) : node->getFirstChild();
     bool isGlobal;
-    TR::VPConstraint *constraint = vp->getConstraint(node, isGlobal);
+    TR::VPConstraint *constraint = vp->getConstraint(valueChild, isGlobal);
     if (constraint) {
         if (constraint->isNullObject() && TR::Compiler->om.writeBarrierType() != gc_modron_wrtbar_always
             && !vp->comp()->getOptions()->realTimeGC()) {
@@ -2881,7 +2882,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
     if (node->getOpCode().isWrtBar()) {
         TR::Node *destinationChild = node->getOpCode().isIndirect() ? node->getChild(2) : node->getChild(1);
         bool isGlobal;
-        TR::VPConstraint *constraint = vp->getConstraint(node, isGlobal);
+        TR::VPConstraint *constraint = vp->getConstraint(destinationChild, isGlobal);
         if (constraint) {
             if (constraint->isHeapObject() == TR_yes
                 && performTransformation(vp->comp(), "%sMarking the wrtbar node [%p] - destination is a heap object\n",

@@ -2647,7 +2647,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
         static bool testChange = feGetEnv("useChild2") != NULL;
         TR::Node *  valueChild = NULL;
         if (testChange) {
-            valueChild = node->getChild(1);
+            valueChild = (node->getNumChildren() >= 3) ? node->getChild(2) : node->getFirstChild();
         } else {
             valueChild = node->getFirstChild();
         }

@@ -2620,9 +2620,40 @@ static bool isBlockInsideLoop(OMR::ValuePropagation *vp, TR::Block *block)
     return (blockStructure == NULL || blockStructure->getContainingLoop() != NULL);
 }
 
+static bool nodeCanCauseGC(TR::Node *node)
+{
+    if (!node)
+        return false;
+
+    if (node->canCauseGC() || node->canGCandReturn())
+        return true;
+
+    if (node->getOpCode().isCall())
+        return true;
+
+    TR::ILOpCodes op = node->getOpCodeValue();
+    if (op == TR::New || op == TR::newarray || op == TR::anewarray || op == TR::multianewarray
+#if defined(J9VM_OPT_VALHALLA_VALUE_TYPES)
+        || op == TR::NewValue
+#endif
+        )
+        return true;
+
+    if (node->getOpCode().hasSymbolReference() && node->getSymbolReference()->canCauseGC())
+        return true;
+
+    for (int32_t i = 0; i < node->getNumChildren(); ++i) {
+        if (nodeCanCauseGC(node->getChild(i)))
+            return true;
+    }
+
+    return false;
+}
+
 /**
  * Verifies that the store occurs in the exact same basic block as the host object's allocation
- * without crossing block boundaries or reaching across loops.
+ * without crossing block boundaries or reaching across loops, and that no intervening tree
+ * or store sub-expression can trigger a GC (which could tenure the host object before the store).
  */
 static bool isSafeSameBlockStore(OMR::ValuePropagation *vp, TR::TreeTop *defTree, TR::Node *storeNode)
 {
@@ -2631,6 +2662,11 @@ static bool isSafeSameBlockStore(OMR::ValuePropagation *vp, TR::TreeTop *defTree
 
     // Do not remove write barriers inside loops
     if (isBlockInsideLoop(vp, vp->_curBlock))
+        return false;
+
+    // Storing a value whose evaluation can cause GC can tenure the host object during evaluation
+    TR::Node *valueChild = storeNode->getOpCode().isIndirect() ? storeNode->getChild(1) : storeNode->getFirstChild();
+    if (nodeCanCauseGC(valueChild))
         return false;
 
     TR::TreeTop *exitTree = vp->_curBlock->getExit();
@@ -2642,6 +2678,11 @@ static bool isSafeSameBlockStore(OMR::ValuePropagation *vp, TR::TreeTop *defTree
         if (n == storeNode || (n->getNumChildren() > 0 && n->getFirstChild() == storeNode)) {
             return true;
         }
+
+        // Any intervening GC point can tenure the host object into Old generation
+        if (nodeCanCauseGC(n))
+            return false;
+
         cur = cur->getNextTreeTop();
     }
 
@@ -2714,32 +2755,48 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
             removeWrtBarLines[numRemoveWrtBarLines++] = __LINE__;                   \
     } while (0)
 
+        TR::Node *valueChild = node->getOpCode().isIndirect() ? node->getChild(1) : node->getFirstChild();
+
         if ((destObject->getOpCodeValue() == TR::New) || (destObject->getOpCodeValue() == TR::newarray)
             || (destObject->getOpCodeValue() == TR::anewarray) || (destObject->getOpCodeValue() == TR::multianewarray)
             || (destObject && (destObject->getOpCodeValue() == TR::loadaddr)
                 && destObject->getSymbolReference()->getSymbol()->isAuto()
-                && destObject->getSymbolReference()->getSymbol()->isLocalObject()))
-            SET_REMOVE_WRTBAR_TRUE();
-        else if (destObject->getOpCodeValue() == TR::aload) {
+                && destObject->getSymbolReference()->getSymbol()->isLocalObject())) {
+            if (!nodeCanCauseGC(valueChild))
+                SET_REMOVE_WRTBAR_TRUE();
+        } else if (destObject->getOpCodeValue() == TR::aload) {
             TR_UseDefInfo *useDefInfo = vp->_useDefInfo;
 
             if (destObject->isThisPointer()
                 && vp->comp()->getJittedMethodSymbol()->getResolvedMethod()->isConstructor()) {
-                SET_REMOVE_WRTBAR_TRUE();
-
-                if (vp->_changedThis == TR_maybe) {
-                    vp->_changedThis = TR_no;
-                    TR::TreeTop *tt = vp->comp()->getStartTree();
-                    for (; tt; tt = tt->getNextTreeTop()) {
-                        TR::Node *storeNode = tt->getNode()->getStoreNode();
-                        if (storeNode && (storeNode->getSymbolReference() == destObject->getSymbolReference())) {
-                            vp->_changedThis = TR_yes;
-                            removeWrtBar = false;
+                if (!nodeCanCauseGC(valueChild)) {
+                    bool seenGCPoint = false;
+                    for (TR::TreeTop *tt = vp->comp()->getStartTree(); tt; tt = tt->getNextTreeTop()) {
+                        if (tt->getNode() == node || (tt->getNode()->getNumChildren() > 0 && tt->getNode()->getFirstChild() == node))
+                            break;
+                        if (nodeCanCauseGC(tt->getNode())) {
+                            seenGCPoint = true;
                             break;
                         }
                     }
-                } else if (vp->_changedThis == TR_yes)
-                    removeWrtBar = false;
+                    if (!seenGCPoint) {
+                        SET_REMOVE_WRTBAR_TRUE();
+
+                        if (vp->_changedThis == TR_maybe) {
+                            vp->_changedThis = TR_no;
+                            TR::TreeTop *tt = vp->comp()->getStartTree();
+                            for (; tt; tt = tt->getNextTreeTop()) {
+                                TR::Node *storeNode = tt->getNode()->getStoreNode();
+                                if (storeNode && (storeNode->getSymbolReference() == destObject->getSymbolReference())) {
+                                    vp->_changedThis = TR_yes;
+                                    removeWrtBar = false;
+                                    break;
+                                }
+                            }
+                        } else if (vp->_changedThis == TR_yes)
+                            removeWrtBar = false;
+                    }
+                }
             } else if (useDefInfo) {
                 uint16_t useIndex = destObject->getUseDefIndex();
                 if (useDefInfo->isUseIndex(useIndex)) {

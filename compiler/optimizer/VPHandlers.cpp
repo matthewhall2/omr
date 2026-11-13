@@ -2605,6 +2605,30 @@ void canRemoveWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
     }
 }
 
+/**
+ * Verifies that the store occurs in the exact same basic block as the host object's allocation
+ * without crossing block boundaries or reaching across loops.
+ */
+static bool isSafeSameBlockStore(OMR::ValuePropagation *vp, TR::TreeTop *defTree, TR::Node *storeNode)
+{
+    if (!defTree || !vp->_curBlock)
+        return false;
+
+    TR::TreeTop *exitTree = vp->_curBlock->getExit();
+    TR::TreeTop *cur = defTree->getNextTreeTop();
+
+    // Walk forward from the allocation treetop to the store within the current basic block
+    while (cur && (cur != exitTree->getNextTreeTop())) {
+        TR::Node *n = cur->getNode();
+        if (n == storeNode || (n->getNumChildren() > 0 && n->getFirstChild() == storeNode)) {
+            return true;
+        }
+        cur = cur->getNextTreeTop();
+    }
+
+    return false;
+}
+
 // Also handles iwrtbar
 //
 TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
@@ -2644,16 +2668,10 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
 
     if (doOpt && ((gcMode == gc_modron_wrtbar_cardmark_and_oldcheck) || (gcMode == gc_modron_wrtbar_oldcheck))
         && (node->getOpCodeValue() == TR::awrtbari) && !node->skipWrtBar()) {
-        static bool testChange = feGetEnv("useChild2") != NULL;
-        TR::Node *  valueChild = NULL;
-        if (testChange) {
-            valueChild = (node->getNumChildren() >= 3) ? node->getChild(2) : node->getFirstChild();
-        } else {
-            valueChild = node->getFirstChild();
-        }
+        TR::Node *destObject = (node->getNumChildren() >= 3) ? node->getChild(2) : node->getFirstChild();
 
-        if (valueChild->getOpCode().isArrayRef())
-            valueChild = valueChild->getFirstChild();
+        if (destObject->getOpCode().isArrayRef())
+            destObject = destObject->getFirstChild();
 
         bool removeWrtBar = false;
 
@@ -2672,16 +2690,16 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
             removeWrtBarLines[numRemoveWrtBarLines++] = __LINE__;                   \
     } while (0)
 
-        if ((valueChild->getOpCodeValue() == TR::New) || (valueChild->getOpCodeValue() == TR::newarray)
-            || (valueChild->getOpCodeValue() == TR::anewarray) || (valueChild->getOpCodeValue() == TR::multianewarray)
-            || (valueChild && (valueChild->getOpCodeValue() == TR::loadaddr)
-                && valueChild->getSymbolReference()->getSymbol()->isAuto()
-                && valueChild->getSymbolReference()->getSymbol()->isLocalObject()))
+        if ((destObject->getOpCodeValue() == TR::New) || (destObject->getOpCodeValue() == TR::newarray)
+            || (destObject->getOpCodeValue() == TR::anewarray) || (destObject->getOpCodeValue() == TR::multianewarray)
+            || (destObject && (destObject->getOpCodeValue() == TR::loadaddr)
+                && destObject->getSymbolReference()->getSymbol()->isAuto()
+                && destObject->getSymbolReference()->getSymbol()->isLocalObject()))
             SET_REMOVE_WRTBAR_TRUE();
-        else if (valueChild->getOpCodeValue() == TR::aload) {
+        else if (destObject->getOpCodeValue() == TR::aload) {
             TR_UseDefInfo *useDefInfo = vp->_useDefInfo;
 
-            if (valueChild->isThisPointer()
+            if (destObject->isThisPointer()
                 && vp->comp()->getJittedMethodSymbol()->getResolvedMethod()->isConstructor()) {
                 SET_REMOVE_WRTBAR_TRUE();
 
@@ -2690,7 +2708,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                     TR::TreeTop *tt = vp->comp()->getStartTree();
                     for (; tt; tt = tt->getNextTreeTop()) {
                         TR::Node *storeNode = tt->getNode()->getStoreNode();
-                        if (storeNode && (storeNode->getSymbolReference() == valueChild->getSymbolReference())) {
+                        if (storeNode && (storeNode->getSymbolReference() == destObject->getSymbolReference())) {
                             vp->_changedThis = TR_yes;
                             removeWrtBar = false;
                             break;
@@ -2699,7 +2717,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                 } else if (vp->_changedThis == TR_yes)
                     removeWrtBar = false;
             } else if (useDefInfo) {
-                uint16_t useIndex = valueChild->getUseDefIndex();
+                uint16_t useIndex = destObject->getUseDefIndex();
                 if (useDefInfo->isUseIndex(useIndex)) {
                     TR_UseDefInfo::BitVector defs(vp->comp()->allocator());
                     if (useDefInfo->getUseDef(defs, useIndex)) {
@@ -2713,7 +2731,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                             }
 
                             TR::TreeTop *defTree = useDefInfo->getTreeTop(defIndex);
-                            TR::Node *defNode = defTree->getNode();
+                            TR::Node *defNode = defTree ? defTree->getNode() : NULL;
 
                             if (defNode && (defNode->getOpCodeValue() == TR::astore)
                                 && (defNode->getNumChildren() > 0)) {
@@ -2725,34 +2743,20 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                                     || (defChild->getOpCodeValue() == TR::multianewarray)
                                     || (defChild && (defChild->getOpCodeValue() == TR::loadaddr)
                                         && defChild->getSymbolReference()->getSymbol()->isAuto()
-                                        && defChild->getSymbolReference()->getSymbol()->isLocalObject()))
-                                    SET_REMOVE_WRTBAR_TRUE();
-                                /*
-                                 else if (defChild && (defChild->getOpCodeValue() == TR::aload))
-                                    {
-                                    TR::SymbolReference *symRef = defChild->getSymbolReference();
-                                    if (symRef)
-                                       {
-                                       TR::Symbol *sym = symRef->getSymbol();
-
-                                       if (!(sym->getKind() == TR::Symbol::IsStatic && sym->isConstString()))
-                                           {
-                                           removeWrtBar = false;
-                                           break;
-                                           }
-                                        else
-                                          removeWrtBar = true;
-                                       }
+                                        && defChild->getSymbolReference()->getSymbol()->isLocalObject())) {
+                                    if (isSafeSameBlockStore(vp, defTree, node)) {
+                                        SET_REMOVE_WRTBAR_TRUE();
+                                    } else {
+                                        removeWrtBar = false;
+                                        break;
                                     }
-                                */
-                                else {
+                                } else {
                                     removeWrtBar = false;
                                     break;
                                 }
                             } else {
-                                // Any reaching def that is not an astore cannot be shown to be a fresh allocation
-                                // removeWrtBar = false;
-                                // break;
+                                removeWrtBar = false;
+                                break;
                             }
                         }
                     }
@@ -2761,7 +2765,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
         }
 
         if (removeWrtBar
-            && performTransformation(vp->comp(), "%sChanging wrtbar to store because the rhs is a new object [%p]\n",
+            && performTransformation(vp->comp(), "%sChanging wrtbar to store because the destination object is a new object [%p]\n",
                 OPT_DETAILS, node)) {
             for (int32_t i = 0; i < numRemoveWrtBarLines; i++)
                 dumpOptDetails(vp->comp(), "%s   removeWrtBar set to true at VPHandlers.cpp:%d for node [%p]\n",

@@ -2606,6 +2606,15 @@ void canRemoveWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
     }
 }
 
+static bool isBlockInsideLoop(OMR::ValuePropagation *vp, TR::Block *block)
+{
+    if (!block || !vp->comp()->getFlowGraph() || !vp->comp()->getFlowGraph()->getStructure())
+        return false;
+
+    TR_BlockStructure *blockStructure = block->getStructureOf();
+    return (blockStructure && blockStructure->getContainingLoop() != NULL);
+}
+
 /**
  * Verifies that the store occurs in the exact same basic block as the host object's allocation
  * without crossing block boundaries or reaching across loops.
@@ -2616,7 +2625,7 @@ static bool isSafeSameBlockStore(OMR::ValuePropagation *vp, TR::TreeTop *defTree
         return false;
 
     // Do not remove write barriers inside loops
-    if (vp->_curBlock->getStructureOf() && vp->_curBlock->getStructureOf()->getContainingLoop() != NULL)
+    if (isBlockInsideLoop(vp, vp->_curBlock))
         return false;
 
     TR::TreeTop *exitTree = vp->_curBlock->getExit();
@@ -2672,7 +2681,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
     auto gcMode = TR::Compiler->om.writeBarrierType();
 
     // Stores inside loops must always retain write barriers to avoid missing Old -> Young references across GCs
-    bool isInsideLoop = vp->_curBlock && vp->_curBlock->getStructureOf() && (vp->_curBlock->getStructureOf()->getContainingLoop() != NULL);
+    bool isInsideLoop = isBlockInsideLoop(vp, vp->_curBlock);
 
     if (doOpt && !isInsideLoop
         && ((gcMode == gc_modron_wrtbar_cardmark_and_oldcheck) || (gcMode == gc_modron_wrtbar_oldcheck))

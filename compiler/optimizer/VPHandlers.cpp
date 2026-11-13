@@ -2614,6 +2614,10 @@ static bool isSafeSameBlockStore(OMR::ValuePropagation *vp, TR::TreeTop *defTree
     if (!defTree || !vp->_curBlock)
         return false;
 
+    // Do not remove write barriers inside loops
+    if (vp->_curBlock->getStructureOf() && vp->_curBlock->getStructureOf()->getContainingLoop() != NULL)
+        return false;
+
     TR::TreeTop *exitTree = vp->_curBlock->getExit();
     TR::TreeTop *cur = defTree->getNextTreeTop();
 
@@ -2666,7 +2670,11 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
 
     auto gcMode = TR::Compiler->om.writeBarrierType();
 
-    if (doOpt && ((gcMode == gc_modron_wrtbar_cardmark_and_oldcheck) || (gcMode == gc_modron_wrtbar_oldcheck))
+    // Stores inside loops must always retain write barriers to avoid missing Old -> Young references across GCs
+    bool isInsideLoop = vp->_curBlock && vp->_curBlock->getStructureOf() && (vp->_curBlock->getStructureOf()->getContainingLoop() != NULL);
+
+    if (doOpt && !isInsideLoop
+        && ((gcMode == gc_modron_wrtbar_cardmark_and_oldcheck) || (gcMode == gc_modron_wrtbar_oldcheck))
         && (node->getOpCodeValue() == TR::awrtbari) && !node->skipWrtBar()) {
         TR::Node *destObject = (node->getNumChildren() >= 3) ? node->getChild(2) : node->getFirstChild();
 

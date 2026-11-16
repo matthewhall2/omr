@@ -2633,16 +2633,24 @@ static bool isSafeSameBlockStore(OMR::ValuePropagation *vp, TR::TreeTop *defTree
     if (isBlockInsideLoop(vp, vp->_curBlock))
         return false;
 
+    TR::TreeTop *entryTree = vp->_curBlock->getEntry();
     TR::TreeTop *exitTree = vp->_curBlock->getExit();
-    TR::TreeTop *cur = defTree->getNextTreeTop();
+    if (!entryTree || !exitTree)
+        return false;
 
-    // Walk forward from the allocation treetop to the store within the current basic block
-    while (cur && (cur != exitTree->getNextTreeTop())) {
-        TR::Node *n = cur->getNode();
-        if (n == storeNode || (n->getNumChildren() > 0 && n->getFirstChild() == storeNode)) {
-            return true;
+    bool foundDef = false;
+    for (TR::TreeTop *cur = entryTree; cur; cur = cur->getNextTreeTop()) {
+        if (cur == defTree) {
+            foundDef = true;
+        } else if (foundDef) {
+            TR::Node *n = cur->getNode();
+            if (n == storeNode || (n->getNumChildren() > 0 && n->getFirstChild() == storeNode)) {
+                return true;
+            }
         }
-        cur = cur->getNextTreeTop();
+
+        if (cur == exitTree)
+            break;
     }
 
     return false;
@@ -2714,8 +2722,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
             removeWrtBarLines[numRemoveWrtBarLines++] = __LINE__;                   \
     } while (0)
 
-        if ((destObject->getOpCodeValue() == TR::New) || (destObject->getOpCodeValue() == TR::newarray)
-            || (destObject->getOpCodeValue() == TR::anewarray) || (destObject->getOpCodeValue() == TR::multianewarray)
+        if ((destObject->getOpCodeValue() == TR::New)
             || (destObject && (destObject->getOpCodeValue() == TR::loadaddr)
                 && destObject->getSymbolReference()->getSymbol()->isAuto()
                 && destObject->getSymbolReference()->getSymbol()->isLocalObject()))
@@ -2762,9 +2769,6 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                                 TR::Node *defChild = defNode->getFirstChild();
 
                                 if ((defChild->getOpCodeValue() == TR::New)
-                                    || (defChild->getOpCodeValue() == TR::newarray)
-                                    || (defChild->getOpCodeValue() == TR::anewarray)
-                                    || (defChild->getOpCodeValue() == TR::multianewarray)
                                     || (defChild && (defChild->getOpCodeValue() == TR::loadaddr)
                                         && defChild->getSymbolReference()->getSymbol()->isAuto()
                                         && defChild->getSymbolReference()->getSymbol()->isLocalObject())) {

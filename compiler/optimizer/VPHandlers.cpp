@@ -2607,6 +2607,95 @@ void canRemoveWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
     }
 }
 
+static bool isBlockInsideLoop(OMR::ValuePropagation *vp, TR::Block *block)
+{
+    if (!block)
+        return false;
+
+    // If CFG structure has not been built yet (e.g. during Local VP), we cannot prove the block is not in a loop.
+    if (!vp->comp()->getFlowGraph() || !vp->comp()->getFlowGraph()->getStructure())
+        return true;
+
+    TR_BlockStructure *blockStructure = block->getStructureOf();
+    return (blockStructure == NULL || blockStructure->getContainingLoop() != NULL);
+}
+
+static bool nodeCanCauseGC(TR::Node *node)
+{
+    if (!node)
+        return false;
+
+    if (node->canCauseGC() || node->canGCandReturn())
+        return true;
+
+    if (node->getOpCode().isCall())
+        return true;
+
+    TR::ILOpCodes op = node->getOpCodeValue();
+    if (op == TR::New || op == TR::newarray || op == TR::anewarray || op == TR::multianewarray
+#if defined(J9VM_OPT_VALHALLA_VALUE_TYPES)
+        || op == TR::NewValue
+#endif
+        )
+        return true;
+
+    if (node->getOpCode().hasSymbolReference() && node->getSymbolReference()->canCauseGC())
+        return true;
+
+    for (int32_t i = 0; i < node->getNumChildren(); ++i) {
+        if (nodeCanCauseGC(node->getChild(i)))
+            return true;
+    }
+
+    return false;
+}
+
+/**
+ * Verifies that the store occurs in the exact same basic block as the host object's allocation
+ * without crossing block boundaries or reaching across loops, and that no intervening tree
+ * or store sub-expression can trigger a GC (which could tenure the host object before the store).
+ */
+static bool isSafeSameBlockStore(OMR::ValuePropagation *vp, TR::TreeTop *defTree, TR::Node *storeNode)
+{
+    if (!defTree || !vp->_curBlock)
+        return false;
+
+    // Do not remove write barriers inside loops
+    if (isBlockInsideLoop(vp, vp->_curBlock))
+        return false;
+
+    // Storing a value whose evaluation can cause GC can tenure the host object during evaluation
+    TR::Node *valueChild = storeNode->getOpCode().isIndirect() ? storeNode->getChild(1) : storeNode->getFirstChild();
+    if (nodeCanCauseGC(valueChild))
+        return false;
+
+    TR::TreeTop *entryTree = vp->_curBlock->getEntry();
+    TR::TreeTop *exitTree = vp->_curBlock->getExit();
+    if (!entryTree || !exitTree)
+        return false;
+
+    bool foundDef = false;
+    for (TR::TreeTop *cur = entryTree; cur; cur = cur->getNextTreeTop()) {
+        if (cur == defTree) {
+            foundDef = true;
+        } else if (foundDef) {
+            TR::Node *n = cur->getNode();
+            if (n == storeNode || (n->getNumChildren() > 0 && n->getFirstChild() == storeNode)) {
+                return true;
+            }
+
+            // Any intervening GC point can tenure the host object into Old generation
+            if (nodeCanCauseGC(n))
+                return false;
+        }
+
+        if (cur == exitTree)
+            break;
+    }
+
+    return false;
+}
+
 // Also handles iwrtbar
 //
 TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
@@ -2644,7 +2733,10 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
 
     auto gcMode = TR::Compiler->om.writeBarrierType();
 
-    if (doOpt && !node->getSymbolReference()->getSymbol()->isArrayShadowSymbol()
+    bool isInsideLoop = isBlockInsideLoop(vp, vp->_curBlock);
+    bool isArrayStore = node->getSymbolReference()->getSymbol()->isArrayShadowSymbol();
+
+    if (doOpt && !isInsideLoop && !isArrayStore
         && ((gcMode == gc_modron_wrtbar_cardmark_and_oldcheck) || (gcMode == gc_modron_wrtbar_oldcheck))
         && (node->getOpCodeValue() == TR::awrtbari) && !node->skipWrtBar()) {
         TR::Node *destObject = (node->getNumChildren() >= 3) ? node->getChild(2) : node->getFirstChild();
@@ -2654,31 +2746,47 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
 
         bool removeWrtBar = false;
 
+        TR::Node *valueChild = node->getOpCode().isIndirect() ? node->getChild(1) : node->getFirstChild();
+
         if ((destObject->getOpCodeValue() == TR::New)
             || (destObject && (destObject->getOpCodeValue() == TR::loadaddr)
                 && destObject->getSymbolReference()->getSymbol()->isAuto()
-                && destObject->getSymbolReference()->getSymbol()->isLocalObject()))
-            removeWrtBar = true;
-        else if (destObject->getOpCodeValue() == TR::aload) {
+                && destObject->getSymbolReference()->getSymbol()->isLocalObject())) {
+            if (!nodeCanCauseGC(valueChild))
+                removeWrtBar = true;
+        } else if (destObject->getOpCodeValue() == TR::aload) {
             TR_UseDefInfo *useDefInfo = vp->_useDefInfo;
 
             if (destObject->isThisPointer()
                 && vp->comp()->getJittedMethodSymbol()->getResolvedMethod()->isConstructor()) {
-                removeWrtBar = true;
-
-                if (vp->_changedThis == TR_maybe) {
-                    vp->_changedThis = TR_no;
-                    TR::TreeTop *tt = vp->comp()->getStartTree();
-                    for (; tt; tt = tt->getNextTreeTop()) {
-                        TR::Node *storeNode = tt->getNode()->getStoreNode();
-                        if (storeNode && (storeNode->getSymbolReference() == destObject->getSymbolReference())) {
-                            vp->_changedThis = TR_yes;
-                            removeWrtBar = false;
+                if (!nodeCanCauseGC(valueChild)) {
+                    bool seenGCPoint = false;
+                    for (TR::TreeTop *tt = vp->comp()->getStartTree(); tt; tt = tt->getNextTreeTop()) {
+                        if (tt->getNode() == node || (tt->getNode()->getNumChildren() > 0 && tt->getNode()->getFirstChild() == node))
+                            break;
+                        if (nodeCanCauseGC(tt->getNode())) {
+                            seenGCPoint = true;
                             break;
                         }
                     }
-                } else if (vp->_changedThis == TR_yes)
-                    removeWrtBar = false;
+                    if (!seenGCPoint) {
+                        removeWrtBar = true;
+
+                        if (vp->_changedThis == TR_maybe) {
+                            vp->_changedThis = TR_no;
+                            TR::TreeTop *tt = vp->comp()->getStartTree();
+                            for (; tt; tt = tt->getNextTreeTop()) {
+                                TR::Node *storeNode = tt->getNode()->getStoreNode();
+                                if (storeNode && (storeNode->getSymbolReference() == destObject->getSymbolReference())) {
+                                    vp->_changedThis = TR_yes;
+                                    removeWrtBar = false;
+                                    break;
+                                }
+                            }
+                        } else if (vp->_changedThis == TR_yes)
+                            removeWrtBar = false;
+                    }
+                }
             } else if (useDefInfo) {
                 uint16_t useIndex = destObject->getUseDefIndex();
                 if (useDefInfo->isUseIndex(useIndex)) {
@@ -2703,9 +2811,14 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                                 if ((defChild->getOpCodeValue() == TR::New)
                                     || (defChild && (defChild->getOpCodeValue() == TR::loadaddr)
                                         && defChild->getSymbolReference()->getSymbol()->isAuto()
-                                        && defChild->getSymbolReference()->getSymbol()->isLocalObject()))
-                                    removeWrtBar = true;
-                                else {
+                                        && defChild->getSymbolReference()->getSymbol()->isLocalObject())) {
+                                    if (isSafeSameBlockStore(vp, defTree, node)) {
+                                        removeWrtBar = true;
+                                    } else {
+                                        removeWrtBar = false;
+                                        break;
+                                    }
+                                } else {
                                     removeWrtBar = false;
                                     break;
                                 }

@@ -2607,55 +2607,6 @@ void canRemoveWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
     }
 }
 
-static bool isBlockInsideLoop(OMR::ValuePropagation *vp, TR::Block *block)
-{
-    if (!block)
-        return false;
-
-    // If CFG structure has not been built yet (e.g. during Local VP), we cannot prove the block is not in a loop.
-    if (!vp->comp()->getFlowGraph() || !vp->comp()->getFlowGraph()->getStructure())
-        return true;
-
-    TR_BlockStructure *blockStructure = block->getStructureOf();
-    return (blockStructure == NULL || blockStructure->getContainingLoop() != NULL);
-}
-
-/**
- * Verifies that the store occurs in the exact same basic block as the host object's allocation
- * without crossing block boundaries or reaching across loops.
- */
-static bool isSafeSameBlockStore(OMR::ValuePropagation *vp, TR::TreeTop *defTree, TR::Node *storeNode)
-{
-    if (!defTree || !vp->_curBlock)
-        return false;
-
-    // Do not remove write barriers inside loops
-    if (isBlockInsideLoop(vp, vp->_curBlock))
-        return false;
-
-    TR::TreeTop *entryTree = vp->_curBlock->getEntry();
-    TR::TreeTop *exitTree = vp->_curBlock->getExit();
-    if (!entryTree || !exitTree)
-        return false;
-
-    bool foundDef = false;
-    for (TR::TreeTop *cur = entryTree; cur; cur = cur->getNextTreeTop()) {
-        if (cur == defTree) {
-            foundDef = true;
-        } else if (foundDef) {
-            TR::Node *n = cur->getNode();
-            if (n == storeNode || (n->getNumChildren() > 0 && n->getFirstChild() == storeNode)) {
-                return true;
-            }
-        }
-
-        if (cur == exitTree)
-            break;
-    }
-
-    return false;
-}
-
 // Also handles iwrtbar
 //
 TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
@@ -2693,11 +2644,7 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
 
     auto gcMode = TR::Compiler->om.writeBarrierType();
 
-    // Stores inside loops and array element stores must always retain write barriers to avoid missing Old -> Young references across GCs
-    bool isInsideLoop = isBlockInsideLoop(vp, vp->_curBlock);
-    bool isArrayStore = node->getSymbolReference()->getSymbol()->isArrayShadowSymbol();
-
-    if (doOpt && !isInsideLoop && !isArrayStore
+    if (doOpt && !node->getSymbolReference()->getSymbol()->isArrayShadowSymbol()
         && ((gcMode == gc_modron_wrtbar_cardmark_and_oldcheck) || (gcMode == gc_modron_wrtbar_oldcheck))
         && (node->getOpCodeValue() == TR::awrtbari) && !node->skipWrtBar()) {
         TR::Node *destObject = (node->getNumChildren() >= 3) ? node->getChild(2) : node->getFirstChild();
@@ -2707,32 +2654,17 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
 
         bool removeWrtBar = false;
 
-        // Debug: record the source line of every site that sets removeWrtBar to true so that the
-        // site(s) responsible can be reported when the transformation is performed.
-        int32_t removeWrtBarLines[8];
-        int32_t numRemoveWrtBarLines = 0;
-#define SET_REMOVE_WRTBAR_TRUE()                                                    \
-    do {                                                                            \
-        removeWrtBar = true;                                                        \
-        bool alreadyRecorded = false;                                               \
-        for (int32_t i = 0; i < numRemoveWrtBarLines; i++)                          \
-            if (removeWrtBarLines[i] == __LINE__)                                   \
-                alreadyRecorded = true;                                             \
-        if (!alreadyRecorded && numRemoveWrtBarLines < 8)                           \
-            removeWrtBarLines[numRemoveWrtBarLines++] = __LINE__;                   \
-    } while (0)
-
         if ((destObject->getOpCodeValue() == TR::New)
             || (destObject && (destObject->getOpCodeValue() == TR::loadaddr)
                 && destObject->getSymbolReference()->getSymbol()->isAuto()
                 && destObject->getSymbolReference()->getSymbol()->isLocalObject()))
-            SET_REMOVE_WRTBAR_TRUE();
+            removeWrtBar = true;
         else if (destObject->getOpCodeValue() == TR::aload) {
             TR_UseDefInfo *useDefInfo = vp->_useDefInfo;
 
             if (destObject->isThisPointer()
                 && vp->comp()->getJittedMethodSymbol()->getResolvedMethod()->isConstructor()) {
-                SET_REMOVE_WRTBAR_TRUE();
+                removeWrtBar = true;
 
                 if (vp->_changedThis == TR_maybe) {
                     vp->_changedThis = TR_no;
@@ -2771,14 +2703,9 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                                 if ((defChild->getOpCodeValue() == TR::New)
                                     || (defChild && (defChild->getOpCodeValue() == TR::loadaddr)
                                         && defChild->getSymbolReference()->getSymbol()->isAuto()
-                                        && defChild->getSymbolReference()->getSymbol()->isLocalObject())) {
-                                    if (isSafeSameBlockStore(vp, defTree, node)) {
-                                        SET_REMOVE_WRTBAR_TRUE();
-                                    } else {
-                                        removeWrtBar = false;
-                                        break;
-                                    }
-                                } else {
+                                        && defChild->getSymbolReference()->getSymbol()->isLocalObject()))
+                                    removeWrtBar = true;
+                                else {
                                     removeWrtBar = false;
                                     break;
                                 }
@@ -2795,12 +2722,8 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
         if (removeWrtBar
             && performTransformation(vp->comp(), "%sChanging wrtbar to store because the destination object is a new object [%p]\n",
                 OPT_DETAILS, node)) {
-            for (int32_t i = 0; i < numRemoveWrtBarLines; i++)
-                dumpOptDetails(vp->comp(), "%s   removeWrtBar set to true at VPHandlers.cpp:%d for node [%p]\n",
-                    OPT_DETAILS, removeWrtBarLines[i], node);
             node->setSkipWrtBar(true);
         }
-#undef SET_REMOVE_WRTBAR_TRUE
     }
 
     // If node is still a write barrier then let's find if it's coming from a new in the same method.

@@ -2584,6 +2584,27 @@ void canRemoveWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
     }
 }
 
+static bool objectIsStoredToStatic(OMR::ValuePropagation *vp, TR::Node *obj)
+{
+    for (TR::TreeTop *tt = vp->comp()->getStartTree(); tt; tt = tt->getNextTreeTop()) {
+        TR::Node *storeNode = tt->getNode();
+        if (!storeNode->getOpCode().isStoreDirect() || storeNode->getNumChildren() == 0
+            || !storeNode->getSymbolReference()->getSymbol()->isStaticField())
+            continue;
+
+        TR::Node *value = storeNode->getFirstChild();
+        if (value == obj) {
+            return true;
+        }
+
+        if (value->getOpCodeValue() == TR::aload && obj->getOpCodeValue() == TR::aload
+            && value->getSymbolReference() == obj->getSymbolReference()) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Also handles iwrtbar
 //
 TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
@@ -2711,6 +2732,12 @@ TR::Node *constrainWrtBar(OMR::ValuePropagation *vp, TR::Node *node)
                     }
                 }
             }
+        }
+
+        if (removeWrtBar && objectIsStoredToStatic(vp, valueChild)) {
+            logprintf(vp->trace(), vp->comp()->log(),
+                "Keeping wrtbar [%p] because the destination object [%p] is stored to a static\n", node, valueChild);
+            removeWrtBar = false;
         }
 
         if (removeWrtBar

@@ -180,6 +180,7 @@ TR_BitVector *OMR::SymbolReference::getUseonlyAliasesBV(TR::SymbolReferenceTable
                 // helpers that don't throw have no use aliases
                 case TR_instanceOf:
                 case TR_checkAssignable:
+                case TR_checkAssignableHelper:
                 case TR_monitorEntry:
                 case TR_transactionEntry:
                 case TR_reportFinalFieldModified:
@@ -383,6 +384,7 @@ TR_BitVector *OMR::SymbolReference::getUseDefAliasesBV(bool isDirectCall, bool i
                 case TR_acquireVMAccess:
                 case TR_instanceOf:
                 case TR_checkAssignable:
+                case TR_checkAssignableHelper:
                 case TR_throwCurrentException:
                 case TR_releaseVMAccess:
                 case TR_stackOverflow:

@@ -3060,6 +3060,8 @@ const char *TR_Debug::getRuntimeHelperName(int32_t index)
                 return "jitInstanceOf";
             case TR_checkAssignable:
                 return "jitCheckAssignable";
+            case TR_checkAssignableHelper:
+                return "jitCheckAssignableHelper";
             case TR_induceOSRAtCurrentPC:
                 return "jitInduceOSRAtCurrentPC";
             case TR_induceOSRAtCurrentPCAndRecompile:
